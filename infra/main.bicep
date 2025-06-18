@@ -687,7 +687,7 @@ module openAi 'br/public:avm/res/cognitive-services/account:0.7.2' = if (isAzure
     }
     sku: openAiSkuName
     deployments: openAiDeployments
-    disableLocalAuth: azureOpenAiDisableKeys
+    disableLocalAuth: false
   }
 }
 
@@ -709,7 +709,7 @@ module documentIntelligence 'br/public:avm/res/cognitive-services/account:0.7.2'
       defaultAction: 'Allow'
     }
     location: documentIntelligenceResourceGroupLocation
-    disableLocalAuth: true
+    disableLocalAuth: false
     tags: tags
     sku: documentIntelligenceSkuName
   }
@@ -781,7 +781,7 @@ module searchService 'core/search/search-services.bicep' = {
     name: !empty(searchServiceName) ? searchServiceName : 'gptkb-${resourceToken}'
     location: !empty(searchServiceLocation) ? searchServiceLocation : location
     tags: tags
-    disableLocalAuth: true
+    disableLocalAuth: false
     sku: {
       name: searchServiceSkuName
     }
@@ -812,7 +812,7 @@ module storage 'core/storage/storage-account.bicep' = {
     publicNetworkAccess: publicNetworkAccess
     bypass: bypass
     allowBlobPublicAccess: false
-    allowSharedKeyAccess: false
+    allowSharedKeyAccess: true
     sku: {
       name: storageSkuName
     }
@@ -845,7 +845,7 @@ module userStorage 'core/storage/storage-account.bicep' = if (useUserUpload) {
     publicNetworkAccess: publicNetworkAccess
     bypass: bypass
     allowBlobPublicAccess: false
-    allowSharedKeyAccess: false
+    allowSharedKeyAccess: true
     isHnsEnabled: true
     sku: {
       name: storageSkuName
