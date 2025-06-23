@@ -146,3 +146,22 @@ Here are community contributors that can review translations:
 | Spanish  | @miguelmsft         |
 | Turkish  | @mertcakdogan       |
 | Italian  | @ivanvaccarics      |
+
+const handleDownloadHtml = () => {
+    // Use the parsed and sanitized HTML content for the answer
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chatbot Answer</title>
+</head>
+<body>
+    ${htmlContent}
+</body>
+</html>
+    `.trim();
+
+    const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+    saveAs(blob, "chatbot-answer.html");
+};

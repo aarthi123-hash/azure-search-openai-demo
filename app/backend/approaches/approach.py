@@ -212,7 +212,7 @@ class Approach(ABC):
                 query_type=QueryType.SEMANTIC,
                 query_language=self.query_language,
                 query_speller=self.query_speller,
-                semantic_configuration_name="default",
+                semantic_configuration_name="rag-1750248600632-semantic-configuration",
                 semantic_query=query_text,
             )
         else:
