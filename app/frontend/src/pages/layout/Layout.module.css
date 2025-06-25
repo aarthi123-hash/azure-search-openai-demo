@@ -1,81 +1,381 @@
+/* Main App Background Styles */
 .layout {
     display: flex;
     flex-direction: column;
     height: 100%;
+    background: #ffffff; /* Changed to white background */
+    min-height: 100vh;
+    position: relative;
+}
+
+/* Remove the pattern overlay for clean white background */
+.layout::before {
+    display: none; /* Disabled pattern overlay */
+}
+
+/* Alternative background patterns - all commented out for white background */
+
+/* Option 1: Subtle pattern overlay - DISABLED
+.layout::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: 
+        radial-gradient(circle at 20% 50%, rgba(190, 76, 41, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(131, 132, 131, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 40% 80%, rgba(152, 142, 139, 0.1) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: -1;
+}
+*/
+
+/* Option 2: Geometric pattern - DISABLED
+.layout::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: 
+        linear-gradient(30deg, rgba(190, 76, 41, 0.05) 12%, transparent 12.5%, transparent 87%, rgba(190, 76, 41, 0.05) 87.5%, rgba(190, 76, 41, 0.05)),
+        linear-gradient(150deg, rgba(190, 76, 41, 0.05) 12%, transparent 12.5%, transparent 87%, rgba(190, 76, 41, 0.05) 87.5%, rgba(190, 76, 41, 0.05)),
+        linear-gradient(30deg, rgba(131, 132, 131, 0.05) 12%, transparent 12.5%, transparent 87%, rgba(131, 132, 131, 0.05) 87.5%, rgba(131, 132, 131, 0.05)),
+        linear-gradient(150deg, rgba(131, 132, 131, 0.05) 12%, transparent 12.5%, transparent 87%, rgba(131, 132, 131, 0.05) 87.5%, rgba(131, 132, 131, 0.05));
+    background-size: 80px 80px;
+    pointer-events: none;
+    z-index: -1;
+}
+*/
+
+/* Content area styling to work with white background */
+.content-area, .main-content, .app-content {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    margin: 1rem;
+    padding: 2rem;
+    box-shadow: 0 8px 32px rgba(44, 43, 44, 0.1);
+    border: 1px solid rgba(230, 228, 227, 0.3); /* Lighter border for white background */
+}
+
+/* Chat input positioning - raised higher */
+.chatInputContainer, 
+.chat-input-container,
+.questionInputContainer,
+.question-input-container,
+.inputContainer,
+.input-container {
+    position: fixed !important;
+    bottom: 120px !important; /* Raised much higher from bottom */
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: calc(100% - 2rem) !important;
+    max-width: 800px !important;
+    z-index: 1000 !important;
+    padding: 0 1rem !important;
+}
+
+/* Alternative positioning for mobile */
+@media (max-width: 768px) {
+    .chatInputContainer, 
+    .chat-input-container,
+    .questionInputContainer,
+    .question-input-container,
+    .inputContainer,
+    .input-container {
+        bottom: 100px !important; /* Slightly less on mobile but still raised */
+        width: calc(100% - 1rem) !important;
+        padding: 0 0.5rem !important;
+    }
+}
+
+/* Uniform box heights for content cards/boxes */
+.contentBox,
+.content-box,
+.resultBox,
+.result-box,
+.answerBox,
+.answer-box,
+.cardContainer > *,
+.card-container > *,
+.gridItem,
+.grid-item,
+.responseCard,
+.response-card,
+/* Additional selectors for example boxes */
+.exampleBox,
+.example-box,
+.suggestionBox,
+.suggestion-box,
+.promptBox,
+.prompt-box,
+.queryBox,
+.query-box,
+/* Generic box selectors */
+[class*="box"],
+[class*="card"],
+.examples > *,
+.suggestions > *,
+.prompts > * {
+    min-height: 180px !important; /* Fixed height for all boxes */
+    height: 180px !important; /* Exact height instead of auto */
+    max-height: 180px !important; /* Prevent growth */
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+    overflow: hidden !important; /* Hide overflow content */
+    box-sizing: border-box !important;
+}
+
+/* Ensure content within boxes stretches properly and handles overflow */
+.contentBox > *,
+.content-box > *,
+.resultBox > *,
+.result-box > *,
+.answerBox > *,
+.answer-box > *,
+.cardContainer > * > *,
+.card-container > * > *,
+.gridItem > *,
+.grid-item > *,
+.responseCard > *,
+.response-card > *,
+.exampleBox > *,
+.example-box > *,
+.suggestionBox > *,
+.suggestion-box > *,
+.promptBox > *,
+.prompt-box > *,
+.queryBox > *,
+.query-box > *,
+[class*="box"] > *,
+[class*="card"] > *,
+.examples > * > *,
+.suggestions > * > *,
+.prompts > * > * {
+    flex-grow: 1;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    word-wrap: break-word !important;
+    line-height: 1.4 !important;
+    max-height: 100% !important;
+}
+
+/* Grid layouts for uniform sizing */
+.cardsGrid,
+.cards-grid,
+.resultsGrid,
+.results-grid,
+.contentGrid,
+.content-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+    gap: 1rem !important;
+    align-items: stretch !important;
+}
+
+/* Mobile grid adjustments */
+@media (max-width: 768px) {
+    .cardsGrid,
+    .cards-grid,
+    .resultsGrid,
+    .results-grid,
+    .contentGrid,
+    .content-grid {
+        grid-template-columns: 1fr !important;
+        gap: 0.75rem !important;
+    }
+    
+    .contentBox,
+    .content-box,
+    .resultBox,
+    .result-box,
+    .answerBox,
+    .answer-box,
+    .cardContainer > *,
+    .card-container > *,
+    .gridItem,
+    .grid-item,
+    .responseCard,
+    .response-card,
+    .exampleBox,
+    .example-box,
+    .suggestionBox,
+    .suggestion-box,
+    .promptBox,
+    .prompt-box,
+    .queryBox,
+    .query-box,
+    [class*="box"],
+    [class*="card"],
+    .examples > *,
+    .suggestions > *,
+    .prompts > * {
+        min-height: 160px !important; /* Slightly smaller but still uniform on mobile */
+        height: 160px !important;
+        max-height: 160px !important;
+    }
 }
 
 .header {
-    background-color: #222222;
-    color: #f2f2f2;
+    background: linear-gradient(135deg, #2c2b2c 0%, #54504f 100%);
+    color: #e6e4e3;
+    box-shadow: 0 4px 12px rgba(44, 43, 44, 0.15);
+    position: relative;
+    z-index: 1000;
 }
 
 .headerContainer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-left: 1rem;
-    padding-right: 1rem;
+    padding: 1rem 2rem;
     position: relative;
+    max-width: 1400px;
+    margin: 0 auto;
 }
 
 .headerTitleContainer {
     display: flex;
     align-items: center;
-    color: #f2f2f2;
+    color: #e6e4e3;
     text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.headerTitleContainer:hover {
+    transform: translateY(-1px);
+    color: #be4c29;
 }
 
 .headerLogo {
-    height: 2rem;
+    height: 2.5rem;
     width: auto;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+    transition: all 0.3s ease;
+    border-radius: 4px;
+    background: rgba(230, 228, 227, 0.1);
+    padding: 0.25rem;
+}
+
+.headerLogo:hover {
+    transform: scale(1.05);
+    filter: drop-shadow(0 4px 8px rgba(190, 76, 41, 0.4));
 }
 
 .headerTitle {
-    margin-left: 0.5rem;
-    font-weight: 600;
+    margin-left: 0.75rem;
+    font-weight: 700;
+    font-size: 1.25rem;
+    letter-spacing: 0.5px;
 }
 
 .headerNavList {
-    z-index: 100;
     display: none;
-    flex-direction: column;
-    background-color: #222222;
-    position: absolute;
-    top: 2.7rem;
-    right: 0;
-    width: auto;
+    justify-content: center;
+    align-items: stretch;
     list-style: none;
-    padding: 1.1rem;
-    align-items: flex-end;
+    padding: 0;
+    margin: 0;
+    background: linear-gradient(135deg, #e6e4e3 0%, #988e8b 100%);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(44, 43, 44, 0.25);
+    position: absolute;
+    top: 4.5rem;
+    right: 2rem;
+    width: auto;
+    min-width: 300px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(190, 76, 41, 0.2);
 }
 
 .headerNavList.show {
-    display: flex; /* Show when toggled */
+    display: flex;
+    flex-direction: column;
+    animation: slideDown 0.3s ease-out;
 }
 
-.headerNavPageLink {
-    padding: 1rem;
-    border-bottom: 1px solid #333;
-    text-align: right;
-    color: #f2f2f2;
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.headerNavList li {
+    margin: 0.5rem;
+    position: relative;
+}
+
+.headerNavList li:first-child {
+    margin-top: 1rem;
+}
+
+.headerNavList li:last-child {
+    margin-bottom: 1rem;
+}
+
+.headerNavPageLink,
+.headerNavPageLinkActive {
+    display: block;
+    padding: 1rem 1.5rem;
+    background: rgba(255, 255, 255, 0.9);
+    color: #54504f;
     text-decoration: none;
-    opacity: 0.75;
-    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-    transition-duration: 500ms;
-    transition-property: opacity;
-    font-size: 1.2rem;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    position: relative;
+    overflow: hidden;
+    text-align: center;
+    letter-spacing: 0.3px;
+}
+
+.headerNavPageLink::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(190, 76, 41, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.headerNavPageLink:hover::before {
+    left: 100%;
 }
 
 .headerNavPageLink:hover {
-    opacity: 1;
+    background: rgba(190, 76, 41, 0.1);
+    color: #be4c29;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(190, 76, 41, 0.3);
+    border-color: #be4c29;
 }
 
 .headerNavPageLinkActive {
-    color: #f2f2f2;
-    text-decoration: none;
-    font-size: 1.2rem;
-    text-align: right;
-    padding: 1rem;
+    background: linear-gradient(135deg, #be4c29 0%, #838483 100%);
+    color: #e6e4e3;
+    border-color: #be4c29;
+    box-shadow: 0 4px 12px rgba(190, 76, 41, 0.4);
+    font-weight: 700;
+}
+
+.headerNavPageLinkActive:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(190, 76, 41, 0.5);
 }
 
 .headerNavLeftMargin {
@@ -83,62 +383,180 @@
 }
 
 .menuToggle {
-    display: block;
-    background: none;
-    border: none;
-    color: #f2f2f2;
-    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #be4c29 0%, #988e8b 100%);
+    border: 2px solid transparent;
+    color: #e6e4e3;
+    font-size: 1.2rem;
     cursor: pointer;
     z-index: 101;
+    padding: 0.75rem;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 8px rgba(190, 76, 41, 0.3);
+}
+
+.menuToggle:hover {
+    background: linear-gradient(135deg, #988e8b 0%, #be4c29 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(190, 76, 41, 0.4);
+    border-color: #e6e4e3;
+}
+
+.menuToggle:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(190, 76, 41, 0.2);
 }
 
 .loginMenuContainer {
     display: flex;
     align-items: center;
-    gap: 0; /* Ensure no gap between login button and menu toggle */
+    gap: 1rem;
 }
 
+/* Desktop Styles */
 @media (min-width: 992px) {
+    .headerContainer {
+        padding: 1.25rem 2rem;
+    }
+
     .headerTitle {
-        font-weight: 600;
+        font-weight: 700;
+        font-size: 1.5rem;
     }
 
     .headerNavList {
         display: flex;
         flex-direction: row;
-        list-style: none;
-        padding: 0;
         position: static;
+        background: transparent;
+        box-shadow: none;
+        border: none;
+        border-radius: 0;
+        backdrop-filter: none;
+        min-width: auto;
         width: auto;
+        animation: none;
     }
 
-    .headerNavPageLink {
-        border-bottom: none;
-        padding: 0;
-        display: block;
+    .headerNavList li {
+        margin: 0 0.75rem;
+    }
+
+    .headerNavList li:first-child,
+    .headerNavList li:last-child {
+        margin-top: 0;
+        margin-bottom: 0;
+    }
+
+    .headerNavPageLink,
+    .headerNavPageLinkActive {
+        padding: 0.75rem 1.5rem;
+        background: rgba(230, 228, 227, 0.1);
+        color: #e6e4e3;
+        border-radius: 25px;
+        font-size: 0.95rem;
+        text-align: center;
+        min-width: 120px;
+        backdrop-filter: blur(5px);
+        border: 2px solid rgba(230, 228, 227, 0.2);
+    }
+
+    .headerNavPageLink::before {
+        background: linear-gradient(90deg, transparent, rgba(230, 228, 227, 0.3), transparent);
     }
 
     .headerNavPageLink:hover {
-        opacity: 1;
+        background: rgba(230, 228, 227, 0.2);
+        color: #e6e4e3;
+        border-color: #be4c29;
+        box-shadow: 0 4px 12px rgba(190, 76, 41, 0.3);
     }
 
     .headerNavPageLinkActive {
-        color: #f2f2f2;
-        text-decoration: none;
+        background: linear-gradient(135deg, #be4c29 0%, #838483 100%);
+        color: #e6e4e3;
+        border-color: #be4c29;
+        box-shadow: 0 4px 12px rgba(190, 76, 41, 0.4);
+        font-weight: 700;
+    }
+
+    .headerNavPageLinkActive:hover {
+        box-shadow: 0 6px 16px rgba(190, 76, 41, 0.5);
+        transform: translateY(-2px);
     }
 
     .headerNavLeftMargin {
-        margin-left: 1.25rem;
+        margin-left: 2rem;
         display: block;
     }
 
     .headerRightText {
-        font-weight: normal;
+        font-weight: 500;
         display: inline-block;
         vertical-align: middle;
+        color: #988e8b;
     }
 
     .menuToggle {
         display: none;
+    }
+
+    .loginMenuContainer {
+        gap: 1.5rem;
+    }
+}
+
+/* Tablet Styles */
+@media (min-width: 768px) and (max-width: 991px) {
+    .headerContainer {
+        padding: 1rem 1.5rem;
+    }
+
+    .headerNavList {
+        right: 1.5rem;
+        min-width: 280px;
+    }
+
+    .headerNavPageLink,
+    .headerNavPageLinkActive {
+        padding: 0.875rem 1.25rem;
+        font-size: 0.95rem;
+    }
+}
+
+/* Small Mobile Styles */
+@media (max-width: 576px) {
+    .headerContainer {
+        padding: 0.75rem 1rem;
+    }
+
+    .headerTitle {
+        font-size: 1.1rem;
+        margin-left: 0.5rem;
+    }
+
+    .headerLogo {
+        height: 2rem;
+    }
+
+    .headerNavList {
+        right: 1rem;
+        left: 1rem;
+        min-width: auto;
+        width: calc(100% - 2rem);
+    }
+
+    .headerNavPageLink,
+    .headerNavPageLinkActive {
+        padding: 1rem;
+        font-size: 0.9rem;
+    }
+
+    .menuToggle {
+        padding: 0.625rem;
+        font-size: 1.1rem;
     }
 }

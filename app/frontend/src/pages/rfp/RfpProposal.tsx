@@ -1,6 +1,10 @@
 import React, { useRef, useState } from "react";
 import mammoth from "mammoth";
+import { chatApi } from "../../api/api"; // Adjust path as needed
 import styles from "./RfpProposal.module.css"; // Create this CSS file for custom styles
+import jsPDF from "jspdf";
+import { Document, Packer, Paragraph, TextRun } from "docx";
+import { saveAs } from "file-saver";
 
 const questionPatterns = [
     /^.*\?$/,
@@ -38,6 +42,10 @@ export const RfpProposal: React.FC = () => {
     const [processing, setProcessing] = useState(false);
     const [results, setResults] = useState<{questions: string[], topics: string[]} | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [chatbotAnswer, setChatbotAnswer] = useState<string | null>(null);
+    const [sending, setSending] = useState(false);
+    const [selectedQuestions, setSelectedQuestions] = useState<number[]>([]);
+    const [selectedTopics, setSelectedTopics] = useState<number[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,6 +60,11 @@ export const RfpProposal: React.FC = () => {
             const text = result.value;
             const extracted = extractQuestionsAndTopics(text);
             setResults(extracted);
+            setSelectedQuestions(extracted.questions.map((_, i) => i));
+            setSelectedTopics(extracted.topics.map((_, i) => i));
+
+            // Send to chatbot immediately after extraction
+            await sendToChatbot(createChatbotMessage(extracted));
         } catch (err) {
             setError("Error processing file. Please make sure it's a valid Word document.");
         } finally {
@@ -63,19 +76,21 @@ export const RfpProposal: React.FC = () => {
         fileInputRef.current?.click();
     };
 
-    const createChatbotMessage = () => {
-        if (!results) return "";
+    const createChatbotMessage = (data = results) => {
+        if (!data) return "";
         let message = "I've extracted the following from a document:\n\n";
-        if (results.questions.length > 0) {
+        const selectedQs = selectedQuestions.map(i => data.questions[i]);
+        const selectedTs = selectedTopics.map(i => data.topics[i]);
+        if (selectedQs.length > 0) {
             message += "QUESTIONS:\n";
-            results.questions.forEach((q, i) => {
+            selectedQs.forEach((q, i) => {
                 message += `${i + 1}. ${q}\n`;
             });
             message += "\n";
         }
-        if (results.topics.length > 0) {
+        if (selectedTs.length > 0) {
             message += "TOPICS:\n";
-            results.topics.forEach((t, i) => {
+            selectedTs.forEach((t, i) => {
                 message += `${i + 1}. ${t}\n`;
             });
             message += "\n";
@@ -86,6 +101,87 @@ export const RfpProposal: React.FC = () => {
 
     const handleCopy = () => {
         navigator.clipboard.writeText(createChatbotMessage());
+    };
+
+    const sendToChatbot = async (message: string) => {
+        setSending(true);
+        setChatbotAnswer(null);
+        try {
+            const response = await chatApi({
+                messages: [{ content: message, role: "user" }],
+                session_state: {}
+            }, false, undefined);
+            const data = await response.json();
+            // If the answer is an object with content, use content; otherwise fallback
+            const answer =
+                typeof data.answer === "object" && data.answer.content
+                    ? data.answer.content
+                    : typeof data.answer === "string"
+                    ? data.answer
+                    : typeof data.message === "object" && data.message.content
+                    ? data.message.content
+                    : typeof data.message === "string"
+                    ? data.message
+                    : "No answer received.";
+            setChatbotAnswer(answer);
+        } catch (err) {
+            setChatbotAnswer("Error contacting chatbot.");
+        } finally {
+            setSending(false);
+        }
+    };
+
+    const handleDownloadPdf = () => {
+        if (!chatbotAnswer) return;
+        const doc = new jsPDF();
+        doc.setFontSize(14);
+        doc.text("Chatbot Answer", 10, 20);
+        doc.setFontSize(12);
+        doc.text(chatbotAnswer, 10, 30, { maxWidth: 180 });
+        doc.save("chatbot-answer.pdf");
+    };
+
+    const handleDownloadWord = async () => {
+        if (!chatbotAnswer) return;
+        const doc = new Document({
+            sections: [
+                {
+                    properties: {},
+                    children: [
+                        new Paragraph({
+                            children: [new TextRun({ text: "Chatbot Answer", bold: true, size: 28 })],
+                        }),
+                        new Paragraph({
+                            children: [new TextRun({ text: chatbotAnswer, size: 24 })],
+                        }),
+                    ],
+                },
+            ],
+        });
+        const blob = await Packer.toBlob(doc);
+        saveAs(blob, "chatbot-answer.docx");
+    };
+
+    const toggleQuestion = (idx: number) => {
+        setSelectedQuestions(selected =>
+            selected.includes(idx)
+                ? selected.filter(i => i !== idx)
+                : [...selected, idx]
+        );
+    };
+    const removeQuestion = (idx: number) => {
+        setSelectedQuestions(selected => selected.filter(i => i !== idx));
+    };
+
+    const toggleTopic = (idx: number) => {
+        setSelectedTopics(selected =>
+            selected.includes(idx)
+                ? selected.filter(i => i !== idx)
+                : [...selected, idx]
+        );
+    };
+    const removeTopic = (idx: number) => {
+        setSelectedTopics(selected => selected.filter(i => i !== idx));
     };
 
     return (
@@ -123,7 +219,24 @@ export const RfpProposal: React.FC = () => {
                             <h3><span className={styles.sectionIcon}>?</span>Questions Found</h3>
                             <div>
                                 {results.questions.length > 0
-                                    ? results.questions.map((q, i) => <div className={styles.item} key={i}>{q}</div>)
+                                    ? results.questions.map((q, i) => (
+                                        <div className={styles.item} key={i} style={{ display: "flex", alignItems: "center" }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedQuestions.includes(i)}
+                                                onChange={() => toggleQuestion(i)}
+                                                style={{ marginRight: 8 }}
+                                            />
+                                            <span style={{ flex: 1 }}>{q}</span>
+                                            <button
+                                                onClick={() => removeQuestion(i)}
+                                                style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer" }}
+                                                title="Remove"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ))
                                     : <div className={styles.item}>No questions found in the document.</div>
                                 }
                             </div>
@@ -132,7 +245,24 @@ export const RfpProposal: React.FC = () => {
                             <h3><span className={styles.sectionIcon}>📝</span>Topics Identified</h3>
                             <div>
                                 {results.topics.length > 0
-                                    ? results.topics.map((t, i) => <div className={styles.item} key={i}>{t}</div>)
+                                    ? results.topics.map((t, i) => (
+                                        <div className={styles.item} key={i} style={{ display: "flex", alignItems: "center" }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedTopics.includes(i)}
+                                                onChange={() => toggleTopic(i)}
+                                                style={{ marginRight: 8 }}
+                                            />
+                                            <span style={{ flex: 1 }}>{t}</span>
+                                            <button
+                                                onClick={() => removeTopic(i)}
+                                                style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer" }}
+                                                title="Remove"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ))
                                     : <div className={styles.item}>No clear topics identified in the document.</div>
                                 }
                             </div>
@@ -168,6 +298,31 @@ export const RfpProposal: React.FC = () => {
                                     />
                                 </div>
                             </div>
+                        </div>
+                        <div className={styles.chatbotInteraction}>
+                            <h3>🤖 Chatbot Interaction</h3>
+                            <button
+                                className={styles.sendToChatbotBtn}
+                                onClick={() => sendToChatbot(createChatbotMessage())}
+                                disabled={sending}
+                            >
+                                {sending ? "Sending to Chatbot..." : "Send to Chatbot"}
+                            </button>
+                            {sending && <div>Sending to chatbot...</div>}
+                            {chatbotAnswer && (
+                                <div className={styles.section}>
+                                    <h3>🤖 Chatbot Answer</h3>
+                                    <div>{chatbotAnswer}</div>
+                                    <div style={{ marginTop: 16 }}>
+                                        <button className={styles.copyBtn} onClick={handleDownloadPdf}>
+                                            📄 Download as PDF
+                                        </button>
+                                        <button className={styles.copyBtn} onClick={handleDownloadWord} style={{ marginLeft: 8 }}>
+                                            📝 Download as Word
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
