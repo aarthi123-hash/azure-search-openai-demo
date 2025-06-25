@@ -5,7 +5,7 @@ import { Panel, DefaultButton, Spinner } from "@fluentui/react";
 
 import styles from "./Ask.module.css";
 
-import { askApi, configApi, ChatAppResponse, ChatAppRequest, RetrievalMode, VectorFields, GPT4VInput, SpeechConfig } from "../../api";
+import { askApi, configApi, uploadFileApi, ChatAppResponse, ChatAppRequest, RetrievalMode, VectorFields, GPT4VInput, SpeechConfig } from "../../api";
 import { Answer, AnswerError } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
 import { ExampleList } from "../../components/Example";
@@ -172,6 +172,21 @@ export function Component(): JSX.Element {
         }
     };
 
+    const handleSend = async (question: string, file?: File | null) => {
+        if (file) {
+            const formData = new FormData();
+            formData.append("file", file);
+            try {
+                await uploadFileApi(formData); // No token needed for anonymous upload
+                // Optionally show a success message or update file list
+            } catch (err) {
+                // Optionally show an error message
+            }
+        }
+        // Then send the question as usual
+        makeApiRequest(question);
+    };
+
     const handleSettingsChange = (field: string, value: any) => {
         switch (field) {
             case "promptTemplate":
@@ -291,10 +306,10 @@ export function Component(): JSX.Element {
                 <h1 className={styles.askTitle}>{t("askTitle")}</h1>
                 <div className={styles.askQuestionInput}>
                     <QuestionInput
-                        placeholder={t("gpt4vExamples.placeholder")}
+                        clearOnSend
+                        placeholder={t("defaultExamples.placeholder")}
                         disabled={isLoading}
-                        initQuestion={question}
-                        onSend={question => makeApiRequest(question)}
+                        onSend={handleSend}
                         showSpeechInput={showSpeechInput}
                     />
                 </div>

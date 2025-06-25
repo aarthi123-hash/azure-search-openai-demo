@@ -82,11 +82,10 @@ export function getCitationFilePath(citation: string): string {
     return `${BACKEND_URI}/content/${citation}`;
 }
 
-export async function uploadFileApi(request: FormData, idToken: string): Promise<SimpleAPIResponse> {
+export async function uploadFileApi(request: FormData): Promise<SimpleAPIResponse> {
     const response = await fetch("/upload", {
         method: "POST",
-        headers: await getHeaders(idToken),
-        body: request
+        body: request // No headers!
     });
 
     if (!response.ok) {

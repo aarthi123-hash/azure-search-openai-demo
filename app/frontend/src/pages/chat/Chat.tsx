@@ -17,7 +17,8 @@ import {
     ResponseMessage,
     VectorFields,
     GPT4VInput,
-    SpeechConfig
+    SpeechConfig,
+    uploadFileApi
 } from "../../api";
 import { Answer, AnswerError, AnswerLoading } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
@@ -395,6 +396,22 @@ const Chat = () => {
 
     const { t, i18n } = useTranslation();
 
+    const handleSend = async (question: string, file?: File | null) => {
+        if (file) {
+            // Upload the file first
+            const formData = new FormData();
+            formData.append("file", file);
+            try {
+                await uploadFileApi(formData);
+                // Optionally show a success message or update file list
+            } catch (err) {
+                // Handle error
+            }
+        }
+        // Then send the question as usual
+        makeApiRequest(question);
+    };
+
     return (
         <div className={styles.container}>
             {/* Setting the page title using react-helmet-async */}
@@ -498,7 +515,7 @@ const Chat = () => {
                             clearOnSend
                             placeholder={t("defaultExamples.placeholder")}
                             disabled={isLoading}
-                            onSend={question => makeApiRequest(question)}
+                            onSend={handleSend}
                             showSpeechInput={showSpeechInput}
                         />
                     </div>

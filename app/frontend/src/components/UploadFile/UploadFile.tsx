@@ -90,7 +90,7 @@ export const UploadFile: React.FC<Props> = ({ className, disabled }: Props) => {
             if (!idToken) {
                 throw new Error("No authentication token available");
             }
-            const response: SimpleAPIResponse = await uploadFileApi(formData, idToken);
+            const response: SimpleAPIResponse = await uploadFileApi(formData);
             setUploadedFile(response);
             setIsUploading(false);
             setUploadedFileError(undefined);

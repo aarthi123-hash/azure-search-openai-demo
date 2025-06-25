@@ -285,13 +285,7 @@ export const Answer = ({
         doc.text('Chatbot Response', margin, yPosition);
         yPosition += 15;
 
-        // Add email at the top (after title)
-        if (userEmail) {
-            doc.setFontSize(12);
-            doc.setFont("helvetica", "normal");
-            doc.text(`User: ${userEmail}`, margin, yPosition);
-            yPosition += 10;
-        }
+    
 
         // Add a separator line
         doc.setLineWidth(0.5);

@@ -27,6 +27,15 @@ const router = createHashRouter([
                 lazy: () => import("./pages/ask/Ask")
             },
             {
+                path: "rfp",
+                lazy: async () => {
+                    const module = await import("./pages/rfp/RfpProposal");
+                
+                    // Replace 'RfpProposal' with the actual exported component name if different
+                    return { element: <module.RfpProposal /> };
+                }
+            },
+            {
                 path: "*",
                 lazy: () => import("./pages/NoPage")
             }
