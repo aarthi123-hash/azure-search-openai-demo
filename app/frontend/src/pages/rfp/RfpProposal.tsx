@@ -11,62 +11,200 @@ const questionPatterns = [
     /^(what|who|where|when|why|how|which|is|are|do|does|did|can|could|would|will|should)\s+.*$/i,
     /^(question|q[\d]*)[:\s]/i
 ];
-const topicPatterns = [
-    /^(topic|subject|chapter|section)[:\s]/i,
-    /^[A-Z][^.!?]*[^.!?]$/,
-    /^(discussion|analyze|explain|describe|compare)[:\s]/i
+
+// Patterns to identify scope headers and section headers
+const scopeHeaderPatterns = [
+    /^#+\s*(.+)$/,  // Markdown-style headers
+    /^([A-Z][^.!?]*):?\s*$/,  // All caps or title case headers
+    /^(scope|task|section|objective|requirement|background|purpose|introduction)\b.*$/i,
+    /^[0-9]+\.?\s+([A-Z].*)/,  // Numbered headers
+    /^\*\*(.+)\*\*$/,  // Bold headers in markdown
 ];
 
-function extractQuestionsAndTopics(text: string) {
-    const lines = text.split('\n').filter(line => line.trim().length > 0);
+// Patterns to identify titles
+const titlePatterns = [
+    /^[A-Z][A-Z\s&()+-]{10,}$/,  // All caps titles
+    /^\*\*[^*]+\*\*$/,  // Bold markdown titles
+    /^#+\s*[A-Z].{5,}$/,  // Markdown headers
+    /^[A-Z][^.!?]{20,}$/,  // Long title case lines
+    /^(REQUEST FOR|RFP|RFI|PROPOSAL|CONTRACT|AGREEMENT|TITLE:|SUBJECT:)/i,  // Common document title prefixes
+];
+
+function extractQuestionsAndScopeContent(text: string) {
+    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
     const questions: string[] = [];
-    const topics: string[] = [];
-    lines.forEach(line => {
-        const trimmedLine = line.trim();
-        if (trimmedLine.length < 10) return;
-        if (questionPatterns.some(pattern => pattern.test(trimmedLine))) {
-            questions.push(trimmedLine);
-            return;
+    const scopeContent: string[] = [];
+    const titles: string[] = [];
+    
+    let isInScopeSection = false;
+    let currentScopeContent = "";
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        if (line.length < 5) continue;
+        
+        // Check for titles first (usually appear early in document)
+        if (i < 20 && titlePatterns.some(pattern => pattern.test(line))) {
+            // Clean up the title
+            let cleanTitle = line.replace(/^\*\*|\*\*$/g, ''); // Remove bold markdown
+            cleanTitle = cleanTitle.replace(/^#+\s*/, ''); // Remove markdown headers
+            cleanTitle = cleanTitle.replace(/^>\s*/, ''); // Remove quote markers
+            cleanTitle = cleanTitle.trim();
+            
+            if (cleanTitle.length > 5 && !titles.includes(cleanTitle)) {
+                titles.push(cleanTitle);
+            }
+            continue;
         }
-        if (topicPatterns.some(pattern => pattern.test(trimmedLine))) {
-            topics.push(trimmedLine);
+        
+        // Check for questions
+        if (questionPatterns.some(pattern => pattern.test(line))) {
+            questions.push(line);
+            continue;
+        }
+        
+        // Check if this line is a scope/section header
+        const isHeader = scopeHeaderPatterns.some(pattern => pattern.test(line));
+        
+        if (isHeader) {
+            // If we were collecting scope content, save it before starting new section
+            if (isInScopeSection && currentScopeContent.trim()) {
+                scopeContent.push(currentScopeContent.trim());
+                currentScopeContent = "";
+            }
+            
+            // Check if this is a scope-related header
+            const isScopeHeader = /^(scope|task|section|objective|requirement)\b.*$/i.test(line) ||
+                                 line.toLowerCase().includes('scope') ||
+                                 line.toLowerCase().includes('task') ||
+                                 line.toLowerCase().includes('requirement');
+            
+            isInScopeSection = isScopeHeader;
+        } else if (isInScopeSection) {
+            // We're in a scope section and this is content (not a header)
+            // Only add substantial content lines (not just formatting or short fragments)
+            if (line.length > 20 && !line.match(/^[\-\*\+]\s*$/) && !line.match(/^[0-9]+\.\s*$/)) {
+                if (currentScopeContent) {
+                    currentScopeContent += " " + line;
+                } else {
+                    currentScopeContent = line;
+                }
+            }
+        }
+    }
+    
+    // Don't forget the last scope content if we were collecting it
+    if (isInScopeSection && currentScopeContent.trim()) {
+        scopeContent.push(currentScopeContent.trim());
+    }
+    
+    // Break down very long scope content into smaller chunks
+    const processedScopeContent: string[] = [];
+    scopeContent.forEach(content => {
+        if (content.length > 500) {
+            // Split long content at sentence boundaries
+            const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 10);
+            let currentChunk = "";
+            
+            sentences.forEach(sentence => {
+                if (currentChunk.length + sentence.length > 400) {
+                    if (currentChunk.trim()) {
+                        processedScopeContent.push(currentChunk.trim() + ".");
+                    }
+                    currentChunk = sentence.trim();
+                } else {
+                    currentChunk += (currentChunk ? ". " : "") + sentence.trim();
+                }
+            });
+            
+            if (currentChunk.trim()) {
+                processedScopeContent.push(currentChunk.trim() + ".");
+            }
+        } else {
+            processedScopeContent.push(content);
         }
     });
+    
     return {
-        questions: [...new Set(questions)].slice(0, 20),
-        topics: [...new Set(topics)].slice(0, 15)
+        questions: [...new Set(questions)].slice(0, 25),
+        scopeContent: [...new Set(processedScopeContent)].slice(0, 20),
+        titles: [...new Set(titles)].slice(0, 10)
     };
 }
 
 export const RfpProposal: React.FC = () => {
     const [processing, setProcessing] = useState(false);
-    const [results, setResults] = useState<{questions: string[], topics: string[]} | null>(null);
+    const [results, setResults] = useState<{questions: string[], scopeContent: string[], titles: string[]} | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [chatbotAnswer, setChatbotAnswer] = useState<string | null>(null);
     const [sending, setSending] = useState(false);
     const [selectedQuestions, setSelectedQuestions] = useState<number[]>([]);
-    const [selectedTopics, setSelectedTopics] = useState<number[]>([]);
+    const [selectedScopeContent, setSelectedScopeContent] = useState<number[]>([]);
+    const [selectedTitles, setSelectedTitles] = useState<number[]>([]);
+    const [editableQuestions, setEditableQuestions] = useState<string[]>([]);
+    const [editableScopeContent, setEditableScopeContent] = useState<string[]>([]);
+    const [editableTitles, setEditableTitles] = useState<string[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        
         setProcessing(true);
         setError(null);
         setResults(null);
+        
         try {
             const arrayBuffer = await file.arrayBuffer();
             const result = await mammoth.extractRawText({ arrayBuffer });
             const text = result.value;
-            const extracted = extractQuestionsAndTopics(text);
-            setResults(extracted);
-            setSelectedQuestions(extracted.questions.map((_, i) => i));
-            setSelectedTopics(extracted.topics.map((_, i) => i));
+            
+            let extracted;
+            if (text.length > 50000) {
+                // For very large documents, process in chunks
+                const chunks = [];
+                for (let i = 0; i < text.length; i += 25000) {
+                    chunks.push(text.substring(i, i + 25000));
+                }
+                
+                let allQuestions: string[] = [];
+                let allScopeContent: string[] = [];
+                
+                chunks.forEach(chunk => {
+                    const chunkExtracted = extractQuestionsAndScopeContent(chunk);
+                    allQuestions = [...allQuestions, ...chunkExtracted.questions];
+                    allScopeContent = [...allScopeContent, ...chunkExtracted.scopeContent];
+                });
+                
+                extracted = {
+                    questions: [...new Set(allQuestions)].slice(0, 25),
+                    scopeContent: [...new Set(allScopeContent)].slice(0, 20),
+                    titles: [] // Large docs usually have titles at the beginning
+                };
+                
+                setResults(extracted);
+                setEditableQuestions([...extracted.questions]);
+                setEditableScopeContent([...extracted.scopeContent]);
+                setEditableTitles([...extracted.titles]);
+                setSelectedQuestions(extracted.questions.map((_, i) => i));
+                setSelectedScopeContent(extracted.scopeContent.map((_, i) => i));
+                setSelectedTitles(extracted.titles.map((_, i) => i));
+            } else {
+                extracted = extractQuestionsAndScopeContent(text);
+                setResults(extracted);
+                setEditableQuestions([...extracted.questions]);
+                setEditableScopeContent([...extracted.scopeContent]);
+                setEditableTitles([...extracted.titles]);
+                setSelectedQuestions(extracted.questions.map((_, i) => i));
+                setSelectedScopeContent(extracted.scopeContent.map((_, i) => i));
+                setSelectedTitles(extracted.titles.map((_, i) => i));
+            }
 
             // Send to chatbot immediately after extraction
             await sendToChatbot(createChatbotMessage(extracted));
         } catch (err) {
-            setError("Error processing file. Please make sure it's a valid Word document.");
+            setError("Error processing file. Please make sure it's a valid Word document or the file isn't too large.");
         } finally {
             setProcessing(false);
         }
@@ -79,8 +217,17 @@ export const RfpProposal: React.FC = () => {
     const createChatbotMessage = (data = results) => {
         if (!data) return "";
         let message = "I've extracted the following from a document:\n\n";
-        const selectedQs = selectedQuestions.map(i => data.questions[i]);
-        const selectedTs = selectedTopics.map(i => data.topics[i]);
+        const selectedTs = selectedTitles.map(i => editableTitles[i]).filter(Boolean);
+        const selectedQs = selectedQuestions.map(i => editableQuestions[i]).filter(Boolean);
+        const selectedSCs = selectedScopeContent.map(i => editableScopeContent[i]).filter(Boolean);
+
+        if (selectedTs.length > 0) {
+            message += "TITLES:\n";
+            selectedTs.forEach((t, i) => {
+                message += `${i + 1}. ${t}\n`;
+            });
+            message += "\n";
+        }
         if (selectedQs.length > 0) {
             message += "QUESTIONS:\n";
             selectedQs.forEach((q, i) => {
@@ -88,14 +235,13 @@ export const RfpProposal: React.FC = () => {
             });
             message += "\n";
         }
-        if (selectedTs.length > 0) {
-            message += "TOPICS:\n";
-            selectedTs.forEach((t, i) => {
-                message += `${i + 1}. ${t}\n`;
+        if (selectedSCs.length > 0) {
+            message += "SCOPE CONTENT:\n";
+            selectedSCs.forEach((sc, i) => {
+                message += `${i + 1}. ${sc}\n\n`;
             });
-            message += "\n";
         }
-        message += "Please analyze these questions and topics and provide insights or answers.";
+        message += "Please analyze these titles, questions and scope content and provide insights or answers.";
         return message;
     };
 
@@ -171,24 +317,47 @@ export const RfpProposal: React.FC = () => {
     };
     const removeQuestion = (idx: number) => {
         setSelectedQuestions(selected => selected.filter(i => i !== idx));
+        setEditableQuestions(prev => prev.filter((_, i) => i !== idx));
+    };
+    const updateQuestion = (idx: number, newValue: string) => {
+        setEditableQuestions(prev => prev.map((q, i) => i === idx ? newValue : q));
     };
 
-    const toggleTopic = (idx: number) => {
-        setSelectedTopics(selected =>
+    const toggleScopeContent = (idx: number) => {
+        setSelectedScopeContent(selected =>
             selected.includes(idx)
                 ? selected.filter(i => i !== idx)
                 : [...selected, idx]
         );
     };
-    const removeTopic = (idx: number) => {
-        setSelectedTopics(selected => selected.filter(i => i !== idx));
+    const removeScopeContent = (idx: number) => {
+        setSelectedScopeContent(selected => selected.filter(i => i !== idx));
+        setEditableScopeContent(prev => prev.filter((_, i) => i !== idx));
+    };
+    const updateScopeContent = (idx: number, newValue: string) => {
+        setEditableScopeContent(prev => prev.map((sc, i) => i === idx ? newValue : sc));
+    };
+
+    const toggleTitle = (idx: number) => {
+        setSelectedTitles(selected =>
+            selected.includes(idx)
+                ? selected.filter(i => i !== idx)
+                : [...selected, idx]
+        );
+    };
+    const removeTitle = (idx: number) => {
+        setSelectedTitles(selected => selected.filter(i => i !== idx));
+        setEditableTitles(prev => prev.filter((_, i) => i !== idx));
+    };
+    const updateTitle = (idx: number, newValue: string) => {
+        setEditableTitles(prev => prev.map((t, i) => i === idx ? newValue : t));
     };
 
     return (
         <div className={styles.container}>
             <div className={styles.header}>
-                <h1>📄 RFP Processor</h1>
-                <p>Extract questions and topics from Word documents and send to chatbots</p>
+                <h1>📄 RFP Processor - Titles, Questions & Scope Content</h1>
+                <p>Extract titles, questions and scope content from Word documents</p>
             </div>
             <div className={styles.mainContent}>
                 <div className={styles.uploadSection}>
@@ -203,34 +372,87 @@ export const RfpProposal: React.FC = () => {
                         📁 Select Word Document
                     </button>
                     <p style={{ marginTop: 15, color: "#6c757d" }}>
-                        Upload a .docx or .doc file to extract questions and topics
+                        Upload a .docx or .doc file to extract titles, questions and scope content
                     </p>
                 </div>
                 {processing && (
                     <div className={styles.processing}>
                         <div className={styles.spinner}></div>
-                        <p>Processing document...</p>
+                        <p>Processing document and extracting titles, questions & scope content...</p>
                     </div>
                 )}
                 {error && <div style={{ color: "red", margin: 20 }}>{error}</div>}
                 {results && (
                     <div className={styles.results}>
                         <div className={styles.section}>
-                            <h3><span className={styles.sectionIcon}>?</span>Questions Found</h3>
+                            <h3><span className={styles.sectionIcon}>📑</span>Titles Found</h3>
                             <div>
-                                {results.questions.length > 0
-                                    ? results.questions.map((q, i) => (
-                                        <div className={styles.item} key={i} style={{ display: "flex", alignItems: "center" }}>
+                                {editableTitles.length > 0
+                                    ? editableTitles.map((t, i) => (
+                                        <div className={styles.item} key={i} style={{ display: "flex", alignItems: "flex-start", marginBottom: 10 }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedTitles.includes(i)}
+                                                onChange={() => toggleTitle(i)}
+                                                style={{ marginRight: 8, marginTop: 8 }}
+                                            />
+                                            <textarea
+                                                value={t}
+                                                onChange={(e) => updateTitle(i, e.target.value)}
+                                                style={{
+                                                    flex: 1,
+                                                    minHeight: 40,
+                                                    padding: 8,
+                                                    border: "1px solid #ddd",
+                                                    borderRadius: 4,
+                                                    fontFamily: "inherit",
+                                                    fontSize: "0.9rem",
+                                                    resize: "vertical"
+                                                }}
+                                            />
+                                            <button
+                                                onClick={() => removeTitle(i)}
+                                                style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer", fontSize: "16px" }}
+                                                title="Remove"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ))
+                                    : <div className={styles.item}>No titles found in the document.</div>
+                                }
+                            </div>
+                        </div>
+                        
+                        <div className={styles.section}>
+                            <h3><span className={styles.sectionIcon}>❓</span>Questions Found</h3>
+                            <div>
+                                {editableQuestions.length > 0
+                                    ? editableQuestions.map((q, i) => (
+                                        <div className={styles.item} key={i} style={{ display: "flex", alignItems: "flex-start", marginBottom: 10 }}>
                                             <input
                                                 type="checkbox"
                                                 checked={selectedQuestions.includes(i)}
                                                 onChange={() => toggleQuestion(i)}
-                                                style={{ marginRight: 8 }}
+                                                style={{ marginRight: 8, marginTop: 8 }}
                                             />
-                                            <span style={{ flex: 1 }}>{q}</span>
+                                            <textarea
+                                                value={q}
+                                                onChange={(e) => updateQuestion(i, e.target.value)}
+                                                style={{
+                                                    flex: 1,
+                                                    minHeight: 40,
+                                                    padding: 8,
+                                                    border: "1px solid #ddd",
+                                                    borderRadius: 4,
+                                                    fontFamily: "inherit",
+                                                    fontSize: "0.9rem",
+                                                    resize: "vertical"
+                                                }}
+                                            />
                                             <button
                                                 onClick={() => removeQuestion(i)}
-                                                style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer" }}
+                                                style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer", fontSize: "16px" }}
                                                 title="Remove"
                                             >
                                                 ✕
@@ -241,32 +463,48 @@ export const RfpProposal: React.FC = () => {
                                 }
                             </div>
                         </div>
+                        
                         <div className={styles.section}>
-                            <h3><span className={styles.sectionIcon}>📝</span>Topics Identified</h3>
+                            <h3><span className={styles.sectionIcon}>📋</span>Scope Content</h3>
                             <div>
-                                {results.topics.length > 0
-                                    ? results.topics.map((t, i) => (
-                                        <div className={styles.item} key={i} style={{ display: "flex", alignItems: "center" }}>
+                                {editableScopeContent.length > 0
+                                    ? editableScopeContent.map((sc, i) => (
+                                        <div className={styles.item} key={i} style={{ display: "flex", alignItems: "flex-start", marginBottom: 10 }}>
                                             <input
                                                 type="checkbox"
-                                                checked={selectedTopics.includes(i)}
-                                                onChange={() => toggleTopic(i)}
-                                                style={{ marginRight: 8 }}
+                                                checked={selectedScopeContent.includes(i)}
+                                                onChange={() => toggleScopeContent(i)}
+                                                style={{ marginRight: 8, marginTop: 8 }}
                                             />
-                                            <span style={{ flex: 1 }}>{t}</span>
+                                            <textarea
+                                                value={sc}
+                                                onChange={(e) => updateScopeContent(i, e.target.value)}
+                                                style={{
+                                                    flex: 1,
+                                                    minHeight: 80,
+                                                    padding: 8,
+                                                    border: "1px solid #ddd",
+                                                    borderRadius: 4,
+                                                    fontFamily: "inherit",
+                                                    fontSize: "0.9rem",
+                                                    lineHeight: 1.4,
+                                                    resize: "vertical"
+                                                }}
+                                            />
                                             <button
-                                                onClick={() => removeTopic(i)}
-                                                style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer" }}
+                                                onClick={() => removeScopeContent(i)}
+                                                style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer", fontSize: "16px" }}
                                                 title="Remove"
                                             >
                                                 ✕
                                             </button>
                                         </div>
                                     ))
-                                    : <div className={styles.item}>No clear topics identified in the document.</div>
+                                    : <div className={styles.item}>No scope content found in the document.</div>
                                 }
                             </div>
                         </div>
+                        
                         <div className={styles.chatbotSection}>
                             <h3>📋 Extracted Content</h3>
                             <p style={{ marginBottom: 20, opacity: 0.9 }}>
@@ -285,7 +523,7 @@ export const RfpProposal: React.FC = () => {
                                         value={createChatbotMessage()}
                                         style={{
                                             width: "100%",
-                                            height: 200,
+                                            height: 250,
                                             background: "rgba(255,255,255,0.9)",
                                             border: "none",
                                             borderRadius: 8,
@@ -299,6 +537,7 @@ export const RfpProposal: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+                        
                         <div className={styles.chatbotInteraction}>
                             <h3>🤖 Chatbot Interaction</h3>
                             <button
