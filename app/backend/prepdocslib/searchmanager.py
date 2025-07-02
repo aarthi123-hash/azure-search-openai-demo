@@ -143,7 +143,7 @@ class SearchManager:
                     facetable=False,
                     vector_search_dimensions=self.embedding_dimensions,
                     vector_search_profile_name=f"{self.field_name_embedding}-profile",
-                    stored=False,
+                    stored=True,
                 )
 
             if self.search_images:
@@ -157,7 +157,7 @@ class SearchManager:
                 )
                 image_embedding_field = SearchField(
                     name="imageEmbedding",
-                    type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+                    type="SearchFieldDataType.Collection(SearchFieldDataType.Single)",
                     hidden=False,
                     searchable=True,
                     filterable=False,
@@ -206,6 +206,12 @@ class SearchManager:
                         type="Edm.String",
                         filterable=True,
                         facetable=False,
+                    ),
+                    SearchableField(
+                        name="chunk",
+                        type="Edm.String",
+                        retrievable=True,
+                        searchable=True,
                     ),
                 ]
                 if self.use_acls:
@@ -259,13 +265,13 @@ class SearchManager:
                     name=self.search_info.index_name,
                     fields=fields,
                     semantic_search=SemanticSearch(
-                        default_configuration_name="default",
+                        default_configuration_name="rag-1751458760568-semantic-configuration",
                         configurations=[
                             SemanticConfiguration(
-                                name="default",
+                                name="rag-1751458760568-semantic-configuration",
                                 prioritized_fields=SemanticPrioritizedFields(
-                                    title_field=SemanticField(field_name="sourcepage"),
-                                    content_fields=[SemanticField(field_name="content")],
+                                    title_field=SemanticField(field_name="title"),
+                                    content_fields=[SemanticField(field_name="chunk")],
                                 ),
                             )
                         ],
@@ -340,18 +346,18 @@ class SearchManager:
                 if existing_index.semantic_search:
                     if not existing_index.semantic_search.default_configuration_name:
                         logger.info("Adding default semantic configuration to index %s", self.search_info.index_name)
-                        existing_index.semantic_search.default_configuration_name = "default"
+                        existing_index.semantic_search.default_configuration_name = "rag-1750248600632-semantic-configuration"
 
                     if existing_index.semantic_search.configurations:
                         existing_semantic_config = existing_index.semantic_search.configurations[0]
                         if (
                             existing_semantic_config.prioritized_fields
                             and existing_semantic_config.prioritized_fields.title_field
-                            and not existing_semantic_config.prioritized_fields.title_field.field_name == "sourcepage"
+                            and not existing_semantic_config.prioritized_fields.title_field.field_name == "title"  # <-- change here
                         ):
                             logger.info("Updating semantic configuration for index %s", self.search_info.index_name)
                             existing_semantic_config.prioritized_fields.title_field = SemanticField(
-                                field_name="sourcepage"
+                                field_name="title"  # <-- change here
                             )
 
                 if existing_index.vector_search is not None and (
@@ -421,7 +427,10 @@ class SearchManager:
                 documents = [
                     {
                         "id": f"{section.content.filename_to_id()}-page-{section_index + batch_index * MAX_BATCH_SIZE}",
-                        "content": section.split_page.text,
+                        "chunk": section.split_page.text,      # <-- main content field for semantic search
+                        "content": section.split_page.text,    # <-- for compatibility
+                        "title": section.content.title,
+                        "storageUrl": url,
                         "category": section.category,
                         "sourcepage": (
                             BlobManager.blob_image_name_from_file_page(

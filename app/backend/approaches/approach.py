@@ -40,12 +40,12 @@ from core.authentication import AuthenticationHelper
 @dataclass
 class Document:
     id: Optional[str] = None
-    content: Optional[str] = None
-    category: Optional[str] = None
-    sourcepage: Optional[str] = None
-    sourcefile: Optional[str] = None
-    oids: Optional[list[str]] = None
-    groups: Optional[list[str]] = None
+    content: Optional[str] = None  # This will be set from 'chunk'
+    chunk_id: Optional[str] = None
+    parent_id: Optional[str] = None
+    chunk: Optional[str] = None
+    title: Optional[str] = None
+    storage_url: Optional[str] = None
     captions: Optional[list[QueryCaptionResult]] = None
     score: Optional[float] = None
     reranker_score: Optional[float] = None
@@ -54,12 +54,12 @@ class Document:
     def serialize_for_results(self) -> dict[str, Any]:
         result_dict = {
             "id": self.id,
-            "content": self.content,
-            "category": self.category,
-            "sourcepage": self.sourcepage,
-            "sourcefile": self.sourcefile,
-            "oids": self.oids,
-            "groups": self.groups,
+            "content": self.content,  # This is now always the main text
+            "chunk_id": self.chunk_id,
+            "parent_id": self.parent_id,
+            "chunk": self.chunk,
+            "title": self.title,
+            "storage_url": self.storage_url,
             "captions": (
                 [
                     {
@@ -201,6 +201,7 @@ class Approach(ABC):
     ) -> list[Document]:
         search_text = query_text if use_text_search else ""
         search_vectors = vectors if use_vector_search else []
+        semantic_config = os.getenv("AZURE_SEARCH_SEMANTIC_CONFIG", "rag-1751458760568-semantic-configuration")
         if use_semantic_ranker:
             results = await self.search_client.search(
                 search_text=search_text,
@@ -212,7 +213,7 @@ class Approach(ABC):
                 query_type=QueryType.SEMANTIC,
                 query_language=self.query_language,
                 query_speller=self.query_speller,
-                semantic_configuration_name="rag-1750248600632-semantic-configuration",
+                semantic_configuration_name=semantic_config,
                 semantic_query=query_text,
             )
         else:
@@ -229,26 +230,26 @@ class Approach(ABC):
                 documents.append(
                     Document(
                         id=document.get("id"),
-                        content=document.get("content"),
-                        category=document.get("category"),
-                        sourcepage=document.get("sourcepage"),
-                        sourcefile=document.get("sourcefile"),
-                        oids=document.get("oids"),
-                        groups=document.get("groups"),
+                        content=document.get("chunk"),  # <-- Use 'chunk' as main content
+                        chunk_id=document.get("chunk_id"),
+                        parent_id=document.get("parent_id"),
+                        chunk=document.get("chunk"),
+                        title=document.get("title"),
+                        storage_url=document.get("storageUrl"),
                         captions=cast(list[QueryCaptionResult], document.get("@search.captions")),
                         score=document.get("@search.score"),
                         reranker_score=document.get("@search.reranker_score"),
                     )
                 )
 
-            qualified_documents = [
-                doc
-                for doc in documents
-                if (
-                    (doc.score or 0) >= (minimum_search_score or 0)
-                    and (doc.reranker_score or 0) >= (minimum_reranker_score or 0)
-                )
-            ]
+        qualified_documents = [
+            doc
+            for doc in documents
+            if (
+                (doc.score or 0) >= (minimum_search_score or 0)
+                and (doc.reranker_score or 0) >= (minimum_reranker_score or 0)
+            )
+        ]
 
         return qualified_documents
 
@@ -311,7 +312,7 @@ class Approach(ABC):
                         Document(
                             id=reference.doc_key,
                             content=reference.source_data["content"],
-                            sourcepage=reference.source_data["sourcepage"],
+                            sourcepage=reference.source_data["storageUrl"],
                             search_agent_query=activity_mapping[reference.activity_source],
                         )
                     )
@@ -329,28 +330,28 @@ class Approach(ABC):
 
         if use_semantic_captions:
             return [
-                (self.get_citation((doc.sourcepage or ""), use_image_citation))
+                (self.get_citation(doc.storage_url or doc.title or "", use_image_citation))
                 + ": "
                 + nonewlines(" . ".join([cast(str, c.text) for c in (doc.captions or [])]))
                 for doc in results
             ]
         else:
             return [
-                (self.get_citation((doc.sourcepage or ""), use_image_citation)) + ": " + nonewlines(doc.content or "")
+                (self.get_citation(doc.storage_url or doc.title or "", use_image_citation)) + ": " + nonewlines(doc.content or "")
                 for doc in results
             ]
 
-    def get_citation(self, sourcepage: str, use_image_citation: bool) -> str:
+    def get_citation(self, storage_url: str, use_image_citation: bool) -> str:
         if use_image_citation:
-            return sourcepage
+            return storage_url
         else:
-            path, ext = os.path.splitext(sourcepage)
+            path, ext = os.path.splitext(storage_url)
             if ext.lower() == ".png":
                 page_idx = path.rfind("-")
                 page_number = int(path[page_idx + 1 :])
                 return f"{path[:page_idx]}.pdf#page={page_number}"
 
-            return sourcepage
+            return storage_url
 
     async def compute_text_embedding(self, q: str):
         SUPPORTED_DIMENSIONS_MODEL = {

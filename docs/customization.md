@@ -145,7 +145,7 @@ Then use the JSON view of the search explorer, and make sure you specify the sam
 {
   "search": "eye exams",
   "queryType": "semantic",
-  "semanticConfiguration": "default",
+  "semanticConfiguration": "rag-1751458760568-semantic-configuration",
   "queryLanguage": "en-us",
   "speller": "lexicon",
   "top": 3
