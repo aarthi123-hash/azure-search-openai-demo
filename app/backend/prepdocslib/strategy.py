@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Optional, Union
 
 from azure.core.credentials import AzureKeyCredential
-from azure.core.credentials_async import AsyncTokenCredential
+from azure.identity.aio import DefaultAzureCredential
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.indexes.aio import SearchIndexClient, SearchIndexerClient
 
@@ -17,9 +17,9 @@ class SearchInfo:
     """
 
     def __init__(
-        self,
-        endpoint: str,
-        credential: Union[AsyncTokenCredential, AzureKeyCredential],
+    self,
+    endpoint: str,
+    credential: Union[DefaultAzureCredential, AzureKeyCredential], 
         index_name: str,
         use_agentic_retrieval: Optional[bool] = False,
         agent_name: Optional[str] = None,

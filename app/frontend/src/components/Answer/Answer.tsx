@@ -297,14 +297,14 @@ export const Answer = ({
         addFormattedContent(sanitizedAnswerHtml);
 
         // Add footer with page numbers
-        const pageCount = doc.getNumberOfPages();
-        for (let i = 1; i <= pageCount; i++) {
-            doc.setPage(i);
-            doc.setFontSize(10);
+        //const pageCount = doc.getNumberOfPages();
+       // for (let i = 1; i <= pageCount; i++) {
+        //    doc.setPage(i);
+        //    doc.setFontSize(10);
             doc.setFont("helvetica", "normal");
-            doc.text(`Page ${i} of ${pageCount}`, maxWidth + margin - 30, pageHeight - 10);
-            doc.text(`Generated on ${new Date().toLocaleDateString()}`, margin, pageHeight - 10);
-        }
+      //      doc.text(`Page ${i} of ${pageCount}`, maxWidth + margin - 30, pageHeight - 10);
+       //     doc.text(`Generated on ${new Date().toLocaleDateString()}`, margin, pageHeight - 10);
+     //   }
         doc.save("chatbot-answer.pdf");
     };
 
