@@ -1,7 +1,21 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Helmet } from "react-helmet-async";
-import { Panel, DefaultButton, Spinner } from "@fluentui/react";
+import { 
+    Panel, 
+    DefaultButton, 
+    Spinner, 
+    Dropdown, 
+    IDropdownOption, 
+    Stack, 
+    IStackTokens, 
+    IconButton, 
+    Text,
+    MessageBar,
+    MessageBarType,
+    Separator,
+    Icon
+} from "@fluentui/react";
 
 import styles from "./Ask.module.css";
 
@@ -18,8 +32,127 @@ import { useMsal } from "@azure/msal-react";
 import { TokenClaimsDisplay } from "../../components/TokenClaimsDisplay";
 import { LoginContext } from "../../loginContext";
 import { LanguagePicker } from "../../i18n/LanguagePicker";
+import { getProgramOptions, getTaskOrderOptions, hasTaskOrders } from "./filterUtils";
+import { filterConfig } from "./filterConfig";
+
+// Enhanced styles for the filter components
+const filterStyles = {
+    filterContainer: {
+        background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
+        padding: '20px',
+        borderRadius: '12px',
+        marginBottom: '20px',
+        border: '2px solid #e1e8ed',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+    },
+    filterHeader: {
+        marginBottom: '16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+    },
+    filterTitle: {
+        fontSize: '16px',
+        fontWeight: '600',
+        color: '#323130',
+        margin: 0
+    },
+    filterDropdown: {
+        minWidth: '220px'
+    },
+    filterTagsContainer: {
+        marginTop: '16px',
+        padding: '12px',
+        backgroundColor: '#ffffff',
+        borderRadius: '8px',
+        border: '1px solid #e1e8ed'
+    },
+    filterTag: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        color: '#ffffff',
+        padding: '6px 12px',
+        borderRadius: '20px',
+        fontSize: '13px',
+        fontWeight: '500',
+        marginRight: '8px',
+        marginBottom: '8px',
+        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+        transition: 'all 0.2s ease'
+    },
+    removeButton: {
+        marginLeft: '6px',
+        minWidth: '18px',
+        height: '18px',
+        color: '#ffffff',
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        borderRadius: '50%',
+        border: 'none',
+        cursor: 'pointer',
+        ':hover': {
+            backgroundColor: 'rgba(255, 255, 255, 0.3)'
+        }
+    },
+    activeFiltersHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '8px'
+    },
+    activeFiltersTitle: {
+        fontSize: '14px',
+        fontWeight: '600',
+        color: '#605e5c'
+    },
+    filterSummary: {
+        backgroundColor: '#f3f9ff',
+        border: '1px solid #cfe4fd',
+        borderRadius: '8px',
+        padding: '12px',
+        marginBottom: '16px'
+    },
+    filterSummaryTitle: {
+        fontSize: '14px',
+        fontWeight: '600',
+        color: '#0078d4',
+        marginBottom: '8px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px'
+    },
+    filterSummaryContent: {
+        fontSize: '13px',
+        color: '#323130',
+        lineHeight: '1.4'
+    },
+    clearAllButton: {
+        background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%)',
+        color: '#ffffff',
+        border: 'none',
+        borderRadius: '6px',
+        padding: '8px 16px',
+        fontWeight: '500',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        ':hover': {
+            transform: 'translateY(-1px)',
+            boxShadow: '0 4px 8px rgba(238, 90, 82, 0.3)'
+        }
+    }
+};
+
+const stackTokens: IStackTokens = { childrenGap: 20 };
+
+interface ActiveFilters {
+    program?: string;
+    taskOrder?: string;
+}
+
+type ChatAppResponseWithFilter = ChatAppResponse & { filterSummary?: string; session_state?: any };
 
 export function Component(): JSX.Element {
+    // ... (all your existing state variables remain the same)
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
     const [promptTemplate, setPromptTemplate] = useState<string>("");
     const [promptTemplatePrefix, setPromptTemplatePrefix] = useState<string>("");
@@ -59,12 +192,15 @@ export function Component(): JSX.Element {
     const [showAgenticRetrievalOption, setShowAgenticRetrievalOption] = useState<boolean>(false);
     const [useAgenticRetrieval, setUseAgenticRetrieval] = useState<boolean>(false);
 
-    const lastQuestionRef = useRef<string>("");
+    // Filter states
+    const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
+    const [selectedProgram, setSelectedProgram] = useState<string>("");
+    const [selectedTaskOrder, setSelectedTaskOrder] = useState<string>("");
 
+    const lastQuestionRef = useRef<string>("");
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<unknown>();
-    const [answer, setAnswer] = useState<ChatAppResponse>();
-    // For the Ask tab, this array will hold a maximum of one URL
+    const [answer, setAnswer] = useState<ChatAppResponseWithFilter>();
     const [speechUrls, setSpeechUrls] = useState<(string | null)[]>([]);
 
     const speechConfig: SpeechConfig = {
@@ -113,8 +249,88 @@ export function Component(): JSX.Element {
         getConfig();
     }, []);
 
+    // Handle program dropdown change
+    const handleProgramChange = (event: React.FormEvent<HTMLDivElement>, option?: IDropdownOption) => {
+        if (option) {
+            const programKey = option.key as string;
+            setSelectedProgram(programKey);
+            
+            // Clear task order if the new program doesn't have task orders
+            if (!hasTaskOrders(programKey)) {
+                setSelectedTaskOrder("");
+                setActiveFilters({ program: programKey });
+            } else {
+                setActiveFilters({ program: programKey, taskOrder: selectedTaskOrder });
+            }
+        }
+    };
+
+    // Handle task order dropdown change
+    const handleTaskOrderChange = (event: React.FormEvent<HTMLDivElement>, option?: IDropdownOption) => {
+        if (option) {
+            const taskOrderKey = option.key as string;
+            setSelectedTaskOrder(taskOrderKey);
+            setActiveFilters({ program: selectedProgram, taskOrder: taskOrderKey });
+        }
+    };
+
+    // Remove individual filter
+    const removeFilter = (filterType: 'program' | 'taskOrder') => {
+        if (filterType === 'program') {
+            setSelectedProgram("");
+            setSelectedTaskOrder("");
+            setActiveFilters({});
+        } else if (filterType === 'taskOrder') {
+            setSelectedTaskOrder("");
+            setActiveFilters({ program: selectedProgram });
+        }
+    };
+
+    // Clear all filters
+    const clearAllFilters = () => {
+        setSelectedProgram("");
+        setSelectedTaskOrder("");
+        setActiveFilters({});
+    };
+
+    // Build filter query string
+    const buildFilterQuery = () => {
+        const filters: string[] = [];
+        
+        if (activeFilters.program) {
+            filters.push(`program:${activeFilters.program}`);
+        }
+        
+        if (activeFilters.taskOrder) {
+            filters.push(`task_order:${activeFilters.taskOrder}`);
+        }
+        
+        return filters.length > 0 ? `[${filters.join(', ')}]` : '';
+    };
+
+    // Get filter summary for display
+    const getFilterSummary = (): string | undefined => {
+        if (!activeFilters.program && !activeFilters.taskOrder) {
+            return undefined;
+        }
+
+        const parts: string[] = [];
+        if (activeFilters.program) {
+            const programLabel = filterConfig.programs[activeFilters.program]?.label || activeFilters.program;
+            parts.push(`Program: ${programLabel}`);
+        }
+        if (activeFilters.taskOrder) {
+            parts.push(`Task Order: ${activeFilters.taskOrder}`);
+        }
+        
+        return parts.join(' • ');
+    };
+
     const makeApiRequest = async (question: string) => {
-        lastQuestionRef.current = question;
+        const filterQuery = buildFilterQuery();
+        const fullQuery = filterQuery ? `${filterQuery} ${question}` : question;
+        
+        lastQuestionRef.current = fullQuery;
 
         error && setError(undefined);
         setIsLoading(true);
@@ -127,7 +343,7 @@ export function Component(): JSX.Element {
             const request: ChatAppRequest = {
                 messages: [
                     {
-                        content: question,
+                        content: fullQuery,
                         role: "user"
                     }
                 ],
@@ -156,14 +372,21 @@ export function Component(): JSX.Element {
                         gpt4v_input: gpt4vInput,
                         language: i18n.language,
                         use_agentic_retrieval: useAgenticRetrieval,
+                        program_filter: activeFilters.program ?? "",
+                        task_order_filter: activeFilters.taskOrder ?? "",
                         ...(seed !== null ? { seed: seed } : {})
                     }
                 },
-                // AI Chat Protocol: Client must pass on any session state received from the server
                 session_state: answer ? answer.session_state : null
             };
             const result = await askApi(request, token);
-            setAnswer(result);
+            
+            // After you get the answer from the API:
+            const filterSummary = getFilterSummary();
+            setAnswer({
+                ...result,
+                filterSummary // add this property
+            });
             setSpeechUrls([null]);
         } catch (e) {
             setError(e);
@@ -177,14 +400,44 @@ export function Component(): JSX.Element {
             const formData = new FormData();
             formData.append("file", file);
             try {
-                await uploadFileApi(formData); // No token needed for anonymous upload
-                // Optionally show a success message or update file list
+                await uploadFileApi(formData);
             } catch (err) {
-                // Optionally show an error message
+                // Handle error
             }
         }
-        // Then send the question as usual
         makeApiRequest(question);
+    };
+
+    // ... (all your existing handler functions remain the same)
+
+    const onExampleClicked = (example: string) => {
+        makeApiRequest(example);
+        setQuestion(example);
+    };
+
+    const onShowCitation = (citation: string) => {
+        if (activeCitation === citation && activeAnalysisPanelTab === AnalysisPanelTabs.CitationTab) {
+            setActiveAnalysisPanelTab(undefined);
+        } else {
+            setActiveCitation(citation);
+            setActiveAnalysisPanelTab(AnalysisPanelTabs.CitationTab);
+        }
+    };
+
+    const onToggleTab = (tab: AnalysisPanelTabs) => {
+        if (activeAnalysisPanelTab === tab) {
+            setActiveAnalysisPanelTab(undefined);
+        } else {
+            setActiveAnalysisPanelTab(tab);
+        }
+    };
+
+    const onUseOidSecurityFilterChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
+        setUseOidSecurityFilter(!!checked);
+    };
+
+    const onUseGroupsSecurityFilterChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
+        setUseGroupsSecurityFilter(!!checked);
     };
 
     const handleSettingsChange = (field: string, value: any) => {
@@ -260,41 +513,10 @@ export function Component(): JSX.Element {
         }
     };
 
-    const onExampleClicked = (example: string) => {
-        makeApiRequest(example);
-        setQuestion(example);
-    };
-
-    const onShowCitation = (citation: string) => {
-        if (activeCitation === citation && activeAnalysisPanelTab === AnalysisPanelTabs.CitationTab) {
-            setActiveAnalysisPanelTab(undefined);
-        } else {
-            setActiveCitation(citation);
-            setActiveAnalysisPanelTab(AnalysisPanelTabs.CitationTab);
-        }
-    };
-
-    const onToggleTab = (tab: AnalysisPanelTabs) => {
-        if (activeAnalysisPanelTab === tab) {
-            setActiveAnalysisPanelTab(undefined);
-        } else {
-            setActiveAnalysisPanelTab(tab);
-        }
-    };
-
-    const onUseOidSecurityFilterChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
-        setUseOidSecurityFilter(!!checked);
-    };
-
-    const onUseGroupsSecurityFilterChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
-        setUseGroupsSecurityFilter(!!checked);
-    };
-
     const { t, i18n } = useTranslation();
 
     return (
         <div className={styles.askContainer}>
-            {/* Setting the page title using react-helmet-async */}
             <Helmet>
                 <title>{t("pageTitle")}</title>
             </Helmet>
@@ -304,6 +526,105 @@ export function Component(): JSX.Element {
                     <SettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
                 </div>
                 <h1 className={styles.askTitle}>{t("askTitle")}</h1>
+                
+                {/* Enhanced Filter Section */}
+                <div style={filterStyles.filterContainer}>
+                    <div style={filterStyles.filterHeader}>
+                        <Icon iconName="Filter" style={{ color: '#0078d4', fontSize: '16px' }} />
+                        <h3 style={filterStyles.filterTitle}>Search Filters</h3>
+                    </div>
+                    
+                    <Stack horizontal tokens={stackTokens} verticalAlign="end">
+                        <Stack.Item>
+                            <Dropdown
+                                placeholder="Select Program"
+                                label="Program"
+                                options={getProgramOptions()}
+                                selectedKey={selectedProgram}
+                                onChange={handleProgramChange}
+                                styles={{ 
+                                    dropdown: filterStyles.filterDropdown,
+                                    title: { borderRadius: '6px' }
+                                }}
+                            />
+                        </Stack.Item>
+                        
+                        {selectedProgram && hasTaskOrders(selectedProgram) && (
+                            <Stack.Item>
+                                <Dropdown
+                                    placeholder="Select Task Order"
+                                    label="Task Order"
+                                    options={getTaskOrderOptions(selectedProgram)}
+                                    selectedKey={selectedTaskOrder}
+                                    onChange={handleTaskOrderChange}
+                                    styles={{ 
+                                        dropdown: filterStyles.filterDropdown,
+                                        title: { borderRadius: '6px' }
+                                    }}
+                                />
+                            </Stack.Item>
+                        )}
+                        
+                        {(activeFilters.program || activeFilters.taskOrder) && (
+                            <Stack.Item>
+                                <DefaultButton 
+                                    text="Clear All Filters" 
+                                    onClick={clearAllFilters}
+                                    iconProps={{ iconName: 'ClearFilter' }}
+                                    styles={{
+                                        root: filterStyles.clearAllButton,
+                                        rootHovered: {
+                                            ...filterStyles.clearAllButton,
+                                            transform: 'translateY(-1px)',
+                                            boxShadow: '0 4px 8px rgba(238, 90, 82, 0.3)'
+                                        }
+                                    }}
+                                />
+                            </Stack.Item>
+                        )}
+                    </Stack>
+                    
+                    {/* Active Filter Tags */}
+                    {(activeFilters.program || activeFilters.taskOrder) && (
+                        <div style={filterStyles.filterTagsContainer}>
+                            <div style={filterStyles.activeFiltersHeader}>
+                                <Icon iconName="CheckboxComposite" style={{ color: '#0078d4', fontSize: '14px' }} />
+                                <Text style={filterStyles.activeFiltersTitle}>
+                                    Active Filters
+                                </Text>
+                            </div>
+                            <div>
+                                {activeFilters.program && (
+                                    <span style={filterStyles.filterTag}>
+                                        <Icon iconName="Program" style={{ marginRight: '4px', fontSize: '12px' }} />
+                                        Program: {filterConfig.programs[activeFilters.program]?.label || activeFilters.program}
+                                        <button
+                                            onClick={() => removeFilter('program')}
+                                            style={filterStyles.removeButton}
+                                            title="Remove program filter"
+                                        >
+                                            <Icon iconName="Cancel" style={{ fontSize: '10px' }} />
+                                        </button>
+                                    </span>
+                                )}
+                                {activeFilters.taskOrder && (
+                                    <span style={filterStyles.filterTag}>
+                                        <Icon iconName="Task" style={{ marginRight: '4px', fontSize: '12px' }} />
+                                        Task Order: {activeFilters.taskOrder}
+                                        <button
+                                            onClick={() => removeFilter('taskOrder')}
+                                            style={filterStyles.removeButton}
+                                            title="Remove task order filter"
+                                        >
+                                            <Icon iconName="Cancel" style={{ fontSize: '10px' }} />
+                                        </button>
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
                 <div className={styles.askQuestionInput}>
                     <QuestionInput
                         clearOnSend
@@ -314,6 +635,7 @@ export function Component(): JSX.Element {
                     />
                 </div>
             </div>
+            
             <div className={styles.askBottomSection}>
                 {isLoading && <Spinner label={t("generatingAnswer")} />}
                 {!lastQuestionRef.current && (
@@ -322,8 +644,24 @@ export function Component(): JSX.Element {
                         <ExampleList onExampleClicked={onExampleClicked} useGPT4V={useGPT4V} />
                     </div>
                 )}
+                
+                {/* Enhanced Answer Section with Filter Display */}
                 {!isLoading && answer && !error && (
                     <div className={styles.askAnswerContainer}>
+                        {/* Filter Summary Display */}
+                        {getFilterSummary() && (
+                            <div style={filterStyles.filterSummary}>
+                                <div style={filterStyles.filterSummaryTitle}>
+                                    <Icon iconName="FilterSolid" />
+                                    Filtered Results
+                                </div>
+                                <div style={filterStyles.filterSummaryContent}>
+                                    Results filtered by: {getFilterSummary()}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Answer Component */}
                         <Answer
                             answer={answer}
                             index={0}
@@ -337,11 +675,13 @@ export function Component(): JSX.Element {
                         />
                     </div>
                 )}
+                
                 {error ? (
                     <div className={styles.askAnswerContainer}>
                         <AnswerError error={error.toString()} onRetry={() => makeApiRequest(lastQuestionRef.current)} />
                     </div>
                 ) : null}
+                
                 {activeAnalysisPanelTab && answer && (
                     <AnalysisPanel
                         className={styles.askAnalysisPanel}
@@ -394,14 +734,11 @@ export function Component(): JSX.Element {
                     useLogin={!!useLogin}
                     loggedIn={loggedIn}
                     requireAccessControl={requireAccessControl}
+                    onChange={handleSettingsChange}
                     showAgenticRetrievalOption={showAgenticRetrievalOption}
                     useAgenticRetrieval={useAgenticRetrieval}
-                    onChange={handleSettingsChange}
                 />
-                {useLogin && <TokenClaimsDisplay />}
             </Panel>
         </div>
     );
 }
-
-Component.displayName = "Ask";

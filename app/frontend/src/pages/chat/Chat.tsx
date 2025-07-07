@@ -239,6 +239,7 @@ const Chat = () => {
                         gpt4v_input: gpt4vInput,
                         language: i18n.language,
                         use_agentic_retrieval: useAgenticRetrieval,
+                        search_index: selectedIndex,
                         ...(seed !== null ? { seed: seed } : {})
                     }
                 },
@@ -413,6 +414,34 @@ const Chat = () => {
         makeApiRequest(question);
     };
 
+    // New state for selected index
+    const [indexes, setIndexes] = useState<{ key: string; text: string }[]>([]);
+    const [selectedIndex, setSelectedIndex] = useState<string>("");
+
+    // Fetch available indexes on component mount
+    useEffect(() => {
+        fetch("/api/search-indexes")
+            .then(res => res.json())
+            .then(data => {
+                if (data.indexes && Array.isArray(data.indexes)) {
+                    setIndexes(data.indexes.map((idx: string) => ({ key: idx, text: idx })));
+                    setSelectedIndex(data.indexes[0] || "");
+                }
+            });
+    }, []);
+
+    // Example: List of available indexes
+    const indexOptions = [
+        { key: "default-index", text: "Default Index" },
+        { key: "contracts-index", text: "Contracts" },
+        { key: "rfp-index", text: "RFPs" }
+    ];
+
+    // Handler for dropdown change
+    const handleIndexChange = (event: React.FormEvent<HTMLDivElement>, option?: any) => {
+        if (option) setSelectedIndex(option.key);
+    };
+
     return (
         <div className={styles.container}>
             {/* Setting the page title using react-helmet-async */}
@@ -512,6 +541,20 @@ const Chat = () => {
                     )}
 
                     <div className={styles.chatInput}>
+                        {indexes.length > 0 && (
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontWeight: "bold", marginRight: 8 }}>Select Index:</label>
+                                <select
+                                    value={selectedIndex}
+                                    onChange={e => setSelectedIndex(e.target.value)}
+                                    style={{ padding: 6, borderRadius: 4, border: "1px solid #ccc" }}
+                                >
+                                    {indexes.map(opt => (
+                                        <option key={opt.key} value={opt.key}>{opt.text}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                         <QuestionInput
                             clearOnSend
                             placeholder={t("defaultExamples.placeholder")}

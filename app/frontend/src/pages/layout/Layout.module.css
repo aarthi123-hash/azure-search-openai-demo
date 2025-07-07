@@ -416,6 +416,39 @@
     gap: 1rem;
 }
 
+/* User Info Box for Header */
+.headerUserInfoBox {
+    min-width: 220px;
+    background: #f3f9ff;
+    border: 1px solid #cfe4fd;
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-right: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    font-size: 14px;
+    color: #323130;
+    box-shadow: 0 2px 8px rgba(44, 43, 44, 0.07);
+    font-family: inherit;
+    line-height: 1.5;
+}
+
+.headerUserInfoBox strong {
+    color: #0078d4;
+    font-weight: 600;
+    margin-right: 4px;
+}
+
+@media (max-width: 768px) {
+    .headerUserInfoBox {
+        min-width: 0;
+        margin-right: 12px;
+        padding: 8px 8px;
+        font-size: 13px;
+    }
+}
+
 /* Desktop Styles */
 @media (min-width: 992px) {
     .headerContainer {

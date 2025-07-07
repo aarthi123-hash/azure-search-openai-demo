@@ -5,6 +5,7 @@ import DOMPurify from "dompurify";
 import { saveAs } from "file-saver";
 import jsPDF from "jspdf";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from "docx";
+import { useMsal } from "@azure/msal-react";
 
 import styles from "./Answer.module.css";
 import { ChatAppResponse, getCitationFilePath, SpeechConfig } from "../../api";
@@ -108,6 +109,15 @@ export const Answer = ({
 
 
     const handleDownloadHtml = () => {
+        const now = new Date();
+        const infoBlock = `
+        <div style="font-size:14px;margin-bottom:16px;">
+            <strong>User:</strong> ${userName}<br>
+            <strong>Date:</strong> ${now.toLocaleDateString()}<br>
+            <strong>Time:</strong> ${now.toLocaleTimeString()}
+        </div>
+    `;
+
         const answerHtml = `
 <!DOCTYPE html>
 <html lang="en">
@@ -116,6 +126,7 @@ export const Answer = ({
     <title>Chatbot Answer</title>
 </head>
 <body>
+    ${infoBlock}
     ${sanitizedAnswerHtml}
 </body>
 </html>
@@ -130,7 +141,19 @@ export const Answer = ({
         let yPosition = 20;
         const pageHeight = doc.internal.pageSize.height;
         const margin = 20;
-        const maxWidth = 170; // Page width minus margins
+        const maxWidth = 170;
+
+        // User/date/time info
+        const now = new Date();
+        const infoLines = [
+            `User: ${userName}`,
+            `Date: ${now.toLocaleDateString()}`,
+            `Time: ${now.toLocaleTimeString()}`
+        ];
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "normal");
+        doc.text(infoLines, margin, yPosition);
+        yPosition += infoLines.length * 6 + 6;
 
         // Helper function to add a new page if needed
         const checkPageBreak = (requiredHeight = 10) => {
@@ -309,6 +332,16 @@ export const Answer = ({
     };
 
     const handleDownloadWord = async () => {
+        const now = new Date();
+        const infoParagraph = new Paragraph({
+            children: [
+                new TextRun({ text: `User: ${userName}  `, bold: true }),
+                new TextRun({ text: `Date: ${now.toLocaleDateString()}  ` }),
+                new TextRun({ text: `Time: ${now.toLocaleTimeString()}` })
+            ],
+            spacing: { after: 200 }
+        });
+
         // Helper to parse HTML and create docx Paragraphs
         const htmlToDocxParagraphs = (htmlContent: string) => {
             const tempDiv = document.createElement("div");
@@ -439,6 +472,7 @@ export const Answer = ({
                 {
                     properties: {},
                     children: [
+                        infoParagraph,
                         new Paragraph({
                             text: "Chatbot Response",
                             heading: HeadingLevel.TITLE,
@@ -447,7 +481,7 @@ export const Answer = ({
                         }),
                         ...htmlToDocxParagraphs(sanitizedAnswerHtml),
                         new Paragraph({
-                            text: `Generated on ${new Date().toLocaleDateString()}`,
+                            text: `Generated on ${now.toLocaleDateString()}`,
                             alignment: AlignmentType.LEFT,
                             spacing: { before: 400 }
                         })
@@ -459,6 +493,10 @@ export const Answer = ({
         const blob = await Packer.toBlob(doc);
         saveAs(blob, "chatbot-answer.docx");
     };
+
+    const { accounts } = useMsal ? useMsal() : { accounts: [] };
+    const user = accounts && accounts.length > 0 ? accounts[0] : null;
+    const userName = user ? (user.name || user.username) : "Guest";
 
     return (
         <div>
