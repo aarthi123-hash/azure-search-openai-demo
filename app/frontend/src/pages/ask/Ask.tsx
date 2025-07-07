@@ -16,6 +16,7 @@ import {
     Separator,
     Icon
 } from "@fluentui/react";
+import mammoth from "mammoth"; // If you want to support .docx parsing
 
 import styles from "./Ask.module.css";
 
@@ -33,7 +34,7 @@ import { TokenClaimsDisplay } from "../../components/TokenClaimsDisplay";
 import { LoginContext } from "../../loginContext";
 import { LanguagePicker } from "../../i18n/LanguagePicker";
 import { getProgramOptions, getTaskOrderOptions, hasTaskOrders } from "./filterUtils";
-import { filterConfig } from "./filterConfig";
+import { filterConfig, FilterConfig } from "./filterConfig";
 
 // Enhanced styles for the filter components
 const filterStyles = {
@@ -256,7 +257,7 @@ export function Component(): JSX.Element {
             setSelectedProgram(programKey);
             
             // Clear task order if the new program doesn't have task orders
-            if (!hasTaskOrders(programKey)) {
+            if (!hasTaskOrders(programKey, currentConfig ?? undefined)) {
                 setSelectedTaskOrder("");
                 setActiveFilters({ program: programKey });
             } else {
@@ -316,7 +317,9 @@ export function Component(): JSX.Element {
 
         const parts: string[] = [];
         if (activeFilters.program) {
-            const programLabel = filterConfig.programs[activeFilters.program]?.label || activeFilters.program;
+            const programLabel = currentConfig && currentConfig.programs
+                ? currentConfig.programs[activeFilters.program]?.label || activeFilters.program
+                : activeFilters.program;
             parts.push(`Program: ${programLabel}`);
         }
         if (activeFilters.taskOrder) {
@@ -515,230 +518,291 @@ export function Component(): JSX.Element {
 
     const { t, i18n } = useTranslation();
 
+    // New state for dynamic filter config
+    const [dynamicFilterConfig, setDynamicFilterConfig] = useState<FilterConfig | null>(null);
+    const currentConfig = dynamicFilterConfig ?? filterConfig;
+
+    // Handle config upload
+    const handleConfigUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        let configObj: any = null;
+
+        if (file.name.endsWith(".json")) {
+            const text = await file.text();
+            configObj = JSON.parse(text);
+        } else if (file.name.endsWith(".docx")) {
+            const arrayBuffer = await file.arrayBuffer();
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            try {
+                configObj = JSON.parse(result.value);
+            } catch {
+                alert("Could not parse config from Word doc. Please ensure it contains valid JSON.");
+                return;
+            }
+        } else {
+            alert("Unsupported file type.");
+            return;
+        }
+
+        setDynamicFilterConfig(configObj);
+    };
+
+    // If no dynamic config, show upload prompt
+
+
     return (
-        <div className={styles.askContainer}>
-            <Helmet>
-                <title>{t("pageTitle")}</title>
-            </Helmet>
-            <div className={styles.askTopSection}>
-                <div className={styles.commandsContainer}>
-                    {showUserUpload && <UploadFile className={styles.commandButton} disabled={!loggedIn} />}
-                    <SettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
-                </div>
-                <h1 className={styles.askTitle}>{t("askTitle")}</h1>
-                
-                {/* Enhanced Filter Section */}
-                <div style={filterStyles.filterContainer}>
-                    <div style={filterStyles.filterHeader}>
-                        <Icon iconName="Filter" style={{ color: '#0078d4', fontSize: '16px' }} />
-                        <h3 style={filterStyles.filterTitle}>Search Filters</h3>
+        <>
+            <div className={styles.askContainer}>
+                <Helmet>
+                    <title>{t("pageTitle")}</title>
+                </Helmet>
+                <div className={styles.askTopSection}>
+                    <div className={styles.commandsContainer}>
+                        {showUserUpload && <UploadFile className={styles.commandButton} disabled={!loggedIn} />}
+                        <SettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
                     </div>
-                    
-                    <Stack horizontal tokens={stackTokens} verticalAlign="end">
-                        <Stack.Item>
-                            <Dropdown
-                                placeholder="Select Program"
-                                label="Program"
-                                options={getProgramOptions()}
-                                selectedKey={selectedProgram}
-                                onChange={handleProgramChange}
-                                styles={{ 
-                                    dropdown: filterStyles.filterDropdown,
-                                    title: { borderRadius: '6px' }
-                                }}
-                            />
-                        </Stack.Item>
-                        
-                        {selectedProgram && hasTaskOrders(selectedProgram) && (
+                    <h1 className={styles.askTitle}>{t("askTitle")}</h1>
+
+                    {/* Enhanced Filter Section */}
+                    <div style={filterStyles.filterContainer}>
+                        <div style={filterStyles.filterHeader}>
+                            <Icon iconName="Filter" style={{ color: '#0078d4', fontSize: '16px' }} />
+                            <h3 style={filterStyles.filterTitle}>Search Filters</h3>
+                        </div>
+
+                        <Stack horizontal tokens={stackTokens} verticalAlign="end">
                             <Stack.Item>
                                 <Dropdown
-                                    placeholder="Select Task Order"
-                                    label="Task Order"
-                                    options={getTaskOrderOptions(selectedProgram)}
-                                    selectedKey={selectedTaskOrder}
-                                    onChange={handleTaskOrderChange}
-                                    styles={{ 
+                                    placeholder="Select Program"
+                                    label="Program"
+                                    options={getProgramOptions(currentConfig)}
+                                    selectedKey={selectedProgram}
+                                    onChange={handleProgramChange}
+                                    styles={{
                                         dropdown: filterStyles.filterDropdown,
                                         title: { borderRadius: '6px' }
                                     }}
                                 />
                             </Stack.Item>
-                        )}
-                        
+
+                            {selectedProgram && hasTaskOrders(selectedProgram, currentConfig ?? undefined) && (
+                                <Stack.Item>
+                                    <Dropdown
+                                        placeholder="Select Task Order"
+                                        label="Task Order"
+                                        options={getTaskOrderOptions(selectedProgram, currentConfig ?? undefined)}
+                                        selectedKey={selectedTaskOrder}
+                                        onChange={handleTaskOrderChange}
+                                        styles={{
+                                            dropdown: filterStyles.filterDropdown,
+                                            title: { borderRadius: '6px' }
+                                        }}
+                                    />
+                                </Stack.Item>
+                            )}
+
+                            {(activeFilters.program || activeFilters.taskOrder) && (
+                                <Stack.Item>
+                                    <DefaultButton
+                                        text="Clear All Filters"
+                                        onClick={clearAllFilters}
+                                        iconProps={{ iconName: 'ClearFilter' }}
+                                        styles={{
+                                            root: filterStyles.clearAllButton,
+                                            rootHovered: {
+                                                ...filterStyles.clearAllButton,
+                                                transform: 'translateY(-1px)',
+                                                boxShadow: '0 4px 8px rgba(238, 90, 82, 0.3)'
+                                            }
+                                        }}
+                                    />
+                                </Stack.Item>
+                            )}
+                        </Stack>
+
+                        {/* Active Filter Tags */}
                         {(activeFilters.program || activeFilters.taskOrder) && (
-                            <Stack.Item>
-                                <DefaultButton 
-                                    text="Clear All Filters" 
-                                    onClick={clearAllFilters}
-                                    iconProps={{ iconName: 'ClearFilter' }}
-                                    styles={{
-                                        root: filterStyles.clearAllButton,
-                                        rootHovered: {
-                                            ...filterStyles.clearAllButton,
-                                            transform: 'translateY(-1px)',
-                                            boxShadow: '0 4px 8px rgba(238, 90, 82, 0.3)'
-                                        }
-                                    }}
-                                />
-                            </Stack.Item>
+                            <div style={filterStyles.filterTagsContainer}>
+                                <div style={filterStyles.activeFiltersHeader}>
+                                    <Icon iconName="CheckboxComposite" style={{ color: '#0078d4', fontSize: '14px' }} />
+                                    <Text style={filterStyles.activeFiltersTitle}>
+                                        Active Filters
+                                    </Text>
+                                </div>
+                                <div>
+                                    {activeFilters.program && (
+                                        <span style={filterStyles.filterTag}>
+                                            <Icon iconName="Program" style={{ marginRight: '4px', fontSize: '12px' }} />
+                                            Program: {(currentConfig && currentConfig.programs && activeFilters.program && currentConfig.programs[activeFilters.program]?.label) || activeFilters.program}
+                                            <button
+                                                onClick={() => removeFilter('program')}
+                                                style={filterStyles.removeButton}
+                                                title="Remove program filter"
+                                            >
+                                                <Icon iconName="Cancel" style={{ fontSize: '10px' }} />
+                                            </button>
+                                        </span>
+                                    )}
+                                    {activeFilters.taskOrder && (
+                                        <span style={filterStyles.filterTag}>
+                                            <Icon iconName="Task" style={{ marginRight: '4px', fontSize: '12px' }} />
+                                            Task Order: {activeFilters.taskOrder}
+                                            <button
+                                                onClick={() => removeFilter('taskOrder')}
+                                                style={filterStyles.removeButton}
+                                                title="Remove task order filter"
+                                            >
+                                                <Icon iconName="Cancel" style={{ fontSize: '10px' }} />
+                                            </button>
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
                         )}
-                    </Stack>
-                    
-                    {/* Active Filter Tags */}
-                    {(activeFilters.program || activeFilters.taskOrder) && (
-                        <div style={filterStyles.filterTagsContainer}>
-                            <div style={filterStyles.activeFiltersHeader}>
-                                <Icon iconName="CheckboxComposite" style={{ color: '#0078d4', fontSize: '14px' }} />
-                                <Text style={filterStyles.activeFiltersTitle}>
-                                    Active Filters
-                                </Text>
-                            </div>
-                            <div>
-                                {activeFilters.program && (
-                                    <span style={filterStyles.filterTag}>
-                                        <Icon iconName="Program" style={{ marginRight: '4px', fontSize: '12px' }} />
-                                        Program: {filterConfig.programs[activeFilters.program]?.label || activeFilters.program}
-                                        <button
-                                            onClick={() => removeFilter('program')}
-                                            style={filterStyles.removeButton}
-                                            title="Remove program filter"
-                                        >
-                                            <Icon iconName="Cancel" style={{ fontSize: '10px' }} />
-                                        </button>
-                                    </span>
-                                )}
-                                {activeFilters.taskOrder && (
-                                    <span style={filterStyles.filterTag}>
-                                        <Icon iconName="Task" style={{ marginRight: '4px', fontSize: '12px' }} />
-                                        Task Order: {activeFilters.taskOrder}
-                                        <button
-                                            onClick={() => removeFilter('taskOrder')}
-                                            style={filterStyles.removeButton}
-                                            title="Remove task order filter"
-                                        >
-                                            <Icon iconName="Cancel" style={{ fontSize: '10px' }} />
-                                        </button>
-                                    </span>
-                                )}
-                            </div>
+                    </div>
+
+                    <div className={styles.askQuestionInput}>
+                        <QuestionInput
+                            clearOnSend
+                            placeholder={t("defaultExamples.placeholder")}
+                            disabled={isLoading}
+                            onSend={handleSend}
+                            showSpeechInput={showSpeechInput}
+                        />
+                    </div>
+                </div>
+
+                <div className={styles.askBottomSection}>
+                    {isLoading && <Spinner label={t("generatingAnswer")} />}
+                    {!lastQuestionRef.current && (
+                        <div className={styles.askTopSection}>
+                            {showLanguagePicker && <LanguagePicker onLanguageChange={newLang => i18n.changeLanguage(newLang)} />}
+                            <ExampleList onExampleClicked={onExampleClicked} useGPT4V={useGPT4V} />
                         </div>
+                    )}
+
+                    {/* Enhanced Answer Section with Filter Display */}
+                    {!isLoading && answer && !error && (
+                        <div className={styles.askAnswerContainer}>
+                            {/* Filter Summary Display */}
+                            {getFilterSummary() && (
+                                <div style={filterStyles.filterSummary}>
+                                    <div style={filterStyles.filterSummaryTitle}>
+                                        <Icon iconName="FilterSolid" />
+                                        Filtered Results
+                                    </div>
+                                    <div style={filterStyles.filterSummaryContent}>
+                                        Results filtered by: {getFilterSummary()}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Answer Component */}
+                            <Answer
+                                answer={answer}
+                                index={0}
+                                speechConfig={speechConfig}
+                                isStreaming={false}
+                                onCitationClicked={x => onShowCitation(x)}
+                                onThoughtProcessClicked={() => onToggleTab(AnalysisPanelTabs.ThoughtProcessTab)}
+                                onSupportingContentClicked={() => onToggleTab(AnalysisPanelTabs.SupportingContentTab)}
+                                showSpeechOutputAzure={showSpeechOutputAzure}
+                                showSpeechOutputBrowser={showSpeechOutputBrowser}
+                            />
+                        </div>
+                    )}
+
+                    {error ? (
+                        <div className={styles.askAnswerContainer}>
+                            <AnswerError error={error.toString()} onRetry={() => makeApiRequest(lastQuestionRef.current)} />
+                        </div>
+                    ) : null}
+
+                    {activeAnalysisPanelTab && answer && (
+                        <AnalysisPanel
+                            className={styles.askAnalysisPanel}
+                            activeCitation={activeCitation}
+                            onActiveTabChanged={x => onToggleTab(x)}
+                            citationHeight="600px"
+                            answer={answer}
+                            activeTab={activeAnalysisPanelTab}
+                        />
                     )}
                 </div>
 
-                <div className={styles.askQuestionInput}>
-                    <QuestionInput
-                        clearOnSend
-                        placeholder={t("defaultExamples.placeholder")}
-                        disabled={isLoading}
-                        onSend={handleSend}
-                        showSpeechInput={showSpeechInput}
+                <Panel
+                    headerText={t("labels.headerText")}
+                    isOpen={isConfigPanelOpen}
+                    isBlocking={false}
+                    onDismiss={() => setIsConfigPanelOpen(false)}
+                    closeButtonAriaLabel={t("labels.closeButton")}
+                    onRenderFooterContent={() => <DefaultButton onClick={() => setIsConfigPanelOpen(false)}>{t("labels.closeButton")}</DefaultButton>}
+                    isFooterAtBottom={true}
+                >
+                    <Settings
+                        promptTemplate={promptTemplate}
+                        promptTemplatePrefix={promptTemplatePrefix}
+                        promptTemplateSuffix={promptTemplateSuffix}
+                        temperature={temperature}
+                        retrieveCount={retrieveCount}
+                        maxSubqueryCount={maxSubqueryCount}
+                        resultsMergeStrategy={resultsMergeStrategy}
+                        seed={seed}
+                        minimumSearchScore={minimumSearchScore}
+                        minimumRerankerScore={minimumRerankerScore}
+                        useSemanticRanker={useSemanticRanker}
+                        useSemanticCaptions={useSemanticCaptions}
+                        useQueryRewriting={useQueryRewriting}
+                        reasoningEffort={reasoningEffort}
+                        excludeCategory={excludeCategory}
+                        includeCategory={includeCategory}
+                        retrievalMode={retrievalMode}
+                        useGPT4V={useGPT4V}
+                        gpt4vInput={gpt4vInput}
+                        vectorFields={vectorFields}
+                        showSemanticRankerOption={showSemanticRankerOption}
+                        showQueryRewritingOption={showQueryRewritingOption}
+                        showReasoningEffortOption={showReasoningEffortOption}
+                        showGPT4VOptions={showGPT4VOptions}
+                        showVectorOption={showVectorOption}
+                        useOidSecurityFilter={useOidSecurityFilter}
+                        useGroupsSecurityFilter={useGroupsSecurityFilter}
+                        useLogin={!!useLogin}
+                        loggedIn={loggedIn}
+                        requireAccessControl={requireAccessControl}
+                        onChange={handleSettingsChange}
+                        showAgenticRetrievalOption={showAgenticRetrievalOption}
+                        useAgenticRetrieval={useAgenticRetrieval}
                     />
+                </Panel>
+
+                <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                        <Icon iconName="Upload" style={{ marginRight: 6 }} />
+                        <span style={{ fontWeight: 500 }}>Upload Filter Config:</span>
+                        <input
+                            type="file"
+                            accept=".json,.docx"
+                            onChange={handleConfigUpload}
+                            style={{ marginLeft: 8 }}
+                        />
+                    </label>
+                    {dynamicFilterConfig && (
+                        <DefaultButton
+                            text="Reset to Default"
+                            onClick={() => setDynamicFilterConfig(null)}
+                            style={{ marginLeft: 16 }}
+                        />
+                    )}
+                    {dynamicFilterConfig && (
+                        <div style={{ color: "#0078d4", marginTop: 8 }}>
+                            Custom filter config loaded.
+                        </div>
+                    )}
                 </div>
             </div>
-            
-            <div className={styles.askBottomSection}>
-                {isLoading && <Spinner label={t("generatingAnswer")} />}
-                {!lastQuestionRef.current && (
-                    <div className={styles.askTopSection}>
-                        {showLanguagePicker && <LanguagePicker onLanguageChange={newLang => i18n.changeLanguage(newLang)} />}
-                        <ExampleList onExampleClicked={onExampleClicked} useGPT4V={useGPT4V} />
-                    </div>
-                )}
-                
-                {/* Enhanced Answer Section with Filter Display */}
-                {!isLoading && answer && !error && (
-                    <div className={styles.askAnswerContainer}>
-                        {/* Filter Summary Display */}
-                        {getFilterSummary() && (
-                            <div style={filterStyles.filterSummary}>
-                                <div style={filterStyles.filterSummaryTitle}>
-                                    <Icon iconName="FilterSolid" />
-                                    Filtered Results
-                                </div>
-                                <div style={filterStyles.filterSummaryContent}>
-                                    Results filtered by: {getFilterSummary()}
-                                </div>
-                            </div>
-                        )}
-                        
-                        {/* Answer Component */}
-                        <Answer
-                            answer={answer}
-                            index={0}
-                            speechConfig={speechConfig}
-                            isStreaming={false}
-                            onCitationClicked={x => onShowCitation(x)}
-                            onThoughtProcessClicked={() => onToggleTab(AnalysisPanelTabs.ThoughtProcessTab)}
-                            onSupportingContentClicked={() => onToggleTab(AnalysisPanelTabs.SupportingContentTab)}
-                            showSpeechOutputAzure={showSpeechOutputAzure}
-                            showSpeechOutputBrowser={showSpeechOutputBrowser}
-                        />
-                    </div>
-                )}
-                
-                {error ? (
-                    <div className={styles.askAnswerContainer}>
-                        <AnswerError error={error.toString()} onRetry={() => makeApiRequest(lastQuestionRef.current)} />
-                    </div>
-                ) : null}
-                
-                {activeAnalysisPanelTab && answer && (
-                    <AnalysisPanel
-                        className={styles.askAnalysisPanel}
-                        activeCitation={activeCitation}
-                        onActiveTabChanged={x => onToggleTab(x)}
-                        citationHeight="600px"
-                        answer={answer}
-                        activeTab={activeAnalysisPanelTab}
-                    />
-                )}
-            </div>
-
-            <Panel
-                headerText={t("labels.headerText")}
-                isOpen={isConfigPanelOpen}
-                isBlocking={false}
-                onDismiss={() => setIsConfigPanelOpen(false)}
-                closeButtonAriaLabel={t("labels.closeButton")}
-                onRenderFooterContent={() => <DefaultButton onClick={() => setIsConfigPanelOpen(false)}>{t("labels.closeButton")}</DefaultButton>}
-                isFooterAtBottom={true}
-            >
-                <Settings
-                    promptTemplate={promptTemplate}
-                    promptTemplatePrefix={promptTemplatePrefix}
-                    promptTemplateSuffix={promptTemplateSuffix}
-                    temperature={temperature}
-                    retrieveCount={retrieveCount}
-                    maxSubqueryCount={maxSubqueryCount}
-                    resultsMergeStrategy={resultsMergeStrategy}
-                    seed={seed}
-                    minimumSearchScore={minimumSearchScore}
-                    minimumRerankerScore={minimumRerankerScore}
-                    useSemanticRanker={useSemanticRanker}
-                    useSemanticCaptions={useSemanticCaptions}
-                    useQueryRewriting={useQueryRewriting}
-                    reasoningEffort={reasoningEffort}
-                    excludeCategory={excludeCategory}
-                    includeCategory={includeCategory}
-                    retrievalMode={retrievalMode}
-                    useGPT4V={useGPT4V}
-                    gpt4vInput={gpt4vInput}
-                    vectorFields={vectorFields}
-                    showSemanticRankerOption={showSemanticRankerOption}
-                    showQueryRewritingOption={showQueryRewritingOption}
-                    showReasoningEffortOption={showReasoningEffortOption}
-                    showGPT4VOptions={showGPT4VOptions}
-                    showVectorOption={showVectorOption}
-                    useOidSecurityFilter={useOidSecurityFilter}
-                    useGroupsSecurityFilter={useGroupsSecurityFilter}
-                    useLogin={!!useLogin}
-                    loggedIn={loggedIn}
-                    requireAccessControl={requireAccessControl}
-                    onChange={handleSettingsChange}
-                    showAgenticRetrievalOption={showAgenticRetrievalOption}
-                    useAgenticRetrieval={useAgenticRetrieval}
-                />
-            </Panel>
-        </div>
+        </>
     );
 }
