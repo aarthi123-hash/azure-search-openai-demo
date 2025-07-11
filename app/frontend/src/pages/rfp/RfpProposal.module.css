@@ -1,6 +1,6 @@
 /* ====== Container ====== */
 .container {
-  max-width: 1200px;
+  max-width: 2000px; /* was 1200px */
   margin: 0 auto;
   background: #ffffff;
   border-radius: 20px;
@@ -84,6 +84,9 @@
 /* ====== Results Section ====== */
 .results {
   margin-top: 24px;
+  display: flex;
+  gap: 32px;
+  width: 100%;
 }
 
 /* ====== Section Block ====== */
@@ -158,4 +161,17 @@
 
 .copyBtn:hover {
   background: #218838;
+}
+
+.sidebar,
+.qaStream {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 400px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  box-sizing: border-box;
 }

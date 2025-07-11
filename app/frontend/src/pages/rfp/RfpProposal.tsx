@@ -3,7 +3,7 @@ import mammoth from "mammoth";
 import { chatApi } from "../../api/api"; // Adjust path as needed
 import styles from "./RfpProposal.module.css"; // Create this CSS file for custom styles
 import jsPDF from "jspdf";
-import { Document, Packer, Paragraph, TextRun } from "docx";
+import { Document, Packer, Paragraph, TextRun, PageBreak, Header, Footer, AlignmentType } from "docx";
 import { saveAs } from "file-saver";
 
 const questionPatterns = [
@@ -296,6 +296,10 @@ export const RfpProposal: React.FC = () => {
     const [selectedTitles, setSelectedTitles] = useState<number[]>([]);
     const [selectedQuestions, setSelectedQuestions] = useState<number[]>([]);
     const [selectedHeaderSections, setSelectedHeaderSections] = useState<number[]>([]);
+    const [qaStream, setQaStream] = useState<{ question: string; answer: string | null }[]>([]);
+    const [currentlyProcessing, setCurrentlyProcessing] = useState<number | null>(null);
+    const [newQuestion, setNewQuestion] = useState("");
+    const [addingQuestion, setAddingQuestion] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -316,8 +320,7 @@ export const RfpProposal: React.FC = () => {
             setSelectedQuestions(extracted.questions.map((_, i) => i));
             setSelectedHeaderSections(extracted.headerSections.map((_, i) => i));
 
-            // Send to chatbot immediately after extraction
-            await sendToChatbot(createChatbotMessage(extracted));
+            
         } catch (err) {
             setError("Error processing file. Please make sure it's a valid Word document.");
             console.error("File processing error:", err);
@@ -415,38 +418,289 @@ export const RfpProposal: React.FC = () => {
     };
 
     const handleDownloadPdf = () => {
-        if (!chatbotAnswer) return;
+    if (!qaStream.length) return;
+    
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 20;
+    const maxWidth = pageWidth - (margin * 2);
+    
+    // Header styling
+    doc.setFontSize(18);
+    doc.setFont("helvetica", 'bold');
+    doc.text('Chatbot Conversation Report', margin, 25);
+    
+    // Metadata with better spacing
+    doc.setFontSize(10);
+    doc.setFont("helvetica", 'normal');
+    doc.text(`User: Guest`, margin, 40);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, margin, 48);
+    doc.text(`Time: ${new Date().toLocaleTimeString()}`, margin, 56);
+    doc.text(`Total Questions: ${qaStream.length}`, margin, 64);
+    
+    // Add a separator line
+    doc.setLineWidth(0.5);
+    doc.line(margin, 70, pageWidth - margin, 70);
+    
+    let y = 80;
+    
+    qaStream.forEach((qa, idx) => {
+        // Check if we need a new page
+        if (y > pageHeight - 60) {
+            doc.addPage();
+            y = 30;
+        }
         
-        const doc = new jsPDF();
-        doc.setFontSize(14);
-        doc.text("Chatbot Answer", 10, 20);
-        doc.setFontSize(12);
-        doc.text(chatbotAnswer, 10, 30, { maxWidth: 180 });
-        doc.save("chatbot-answer.pdf");
-    };
+        // Question styling
+        doc.setFontSize(11);
+        doc.setFont("helvetica", 'normal');
+        doc.setTextColor(0, 0, 0);
+        
+        const questionText = `Q${idx + 1}: ${qa.question}`;
+        const questionLines = doc.splitTextToSize(questionText, maxWidth);
+        doc.text(questionLines, margin, y);
+        y += (questionLines.length * 6) + 2;
+        
+        // Answer styling
+        doc.setFontSize(10);
+        doc.setFont("helvetica", 'normal');
+        doc.setTextColor(60, 60, 60);
+        
+        const answerText = `A${idx + 1}: ${qa.answer ?? "No answer provided"}`;
+        const answerLines = doc.splitTextToSize(answerText, maxWidth);
+        doc.text(answerLines, margin, y);
+        y += (answerLines.length * 5) + 8;
+        
+        // Add a subtle separator between Q&A pairs
+        if (idx < qaStream.length - 1) {
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.1);
+            doc.line(margin, y, pageWidth - margin, y);
+            y += 8;
+        }
+    });
+    
+    // Footer on each page
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(128, 128, 128);
+        doc.text(`Page ${i} of ${totalPages}`, pageWidth - 40, pageHeight - 10);
+        doc.text(`Generated on ${new Date().toLocaleString()}`, margin, pageHeight - 10);
+    }
+    
+    doc.save("chatbot-conversation-report.pdf");
+};
 
-    const handleDownloadWord = async () => {
-        if (!chatbotAnswer) return;
-        
-        const doc = new Document({
-            sections: [
-                {
-                    properties: {},
-                    children: [
-                        new Paragraph({
-                            children: [new TextRun({ text: "Chatbot Answer", bold: true, size: 28 })],
-                        }),
-                        new Paragraph({
-                            children: [new TextRun({ text: chatbotAnswer, size: 24 })],
-                        }),
-                    ],
+const handleDownloadWord = async () => {
+    // Load previous Q&A from local storage
+    let previousQaStream: { question: string; answer: string | null }[] = [];
+    try {
+        const stored = localStorage.getItem("rfpQaStream");
+        if (stored) previousQaStream = JSON.parse(stored);
+    } catch {}
+
+    // Merge previous and current, avoiding duplicates
+    const allQaStream = [
+        ...previousQaStream,
+        ...qaStream.filter(
+            qa => !previousQaStream.some(
+                prev => prev.question === qa.question && prev.answer === qa.answer
+            )
+        )
+    ];
+
+    if (!allQaStream.length) return;
+
+    // Save merged Q&A back to local storage
+    localStorage.setItem("rfpQaStream", JSON.stringify(allQaStream));
+
+    const doc = new Document({
+        sections: [
+            {
+                properties: {
+                    page: {
+                        margin: {
+                            top: 1440,    // 1 inch
+                            right: 1440,  // 1 inch
+                            bottom: 1440, // 1 inch
+                            left: 1440,   // 1 inch
+                        },
+                    },
                 },
-            ],
-        });
-        
-        const blob = await Packer.toBlob(doc);
-        saveAs(blob, "chatbot-answer.docx");
-    };
+                headers: {
+                    default: new Header({
+                        children: [
+                            new Paragraph({
+                                children: [
+                                    new TextRun({
+                                        text: "Chatbot Conversation Report",
+                                        bold: true,
+                                        size: 24,
+                                    }),
+                                ],
+                                alignment: AlignmentType.CENTER,
+                            }),
+                        ],
+                    }),
+                },
+                footers: {
+                    default: new Footer({
+                        children: [
+                            new Paragraph({
+                                children: [
+                                    new TextRun({
+                                        text: `Generated on ${new Date().toLocaleString()}`,
+                                        size: 18,
+                                        color: "666666",
+                                    }),
+                                ],
+                                alignment: AlignmentType.CENTER,
+                            }),
+                        ],
+                    }),
+                },
+                children: [
+                    // Title
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: "Chatbot Conversation Report",
+                                bold: true,
+                                size: 32,
+                                color: "2E86AB",
+                            }),
+                        ],
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 400 },
+                    }),
+                    
+                    // Metadata section
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: "Session Details",
+                                bold: true,
+                                size: 24,
+                                underline: {},
+                            }),
+                        ],
+                        spacing: { after: 200 },
+                    }),
+                    
+                    new Paragraph({
+                        children: [
+                            new TextRun({ text: "User: ", bold: true, size: 22 }),
+                            new TextRun({ text: "Guest", size: 22 }),
+                        ],
+                        spacing: { after: 100 },
+                    }),
+                    
+                    new Paragraph({
+                        children: [
+                            new TextRun({ text: "Date: ", bold: true, size: 22 }),
+                            new TextRun({ text: new Date().toLocaleDateString(), size: 22 }),
+                        ],
+                        spacing: { after: 100 },
+                    }),
+                    
+                    new Paragraph({
+                        children: [
+                            new TextRun({ text: "Time: ", bold: true, size: 22 }),
+                            new TextRun({ text: new Date().toLocaleTimeString(), size: 22 }),
+                        ],
+                        spacing: { after: 100 },
+                    }),
+                    
+                    new Paragraph({
+                        children: [
+                            new TextRun({ text: "Total Questions: ", bold: true, size: 22 }),
+                            new TextRun({ text: allQaStream.length.toString(), size: 22 }),
+                        ],
+                        spacing: { after: 400 },
+                    }),
+                    
+                    // Conversation section
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: "Conversation",
+                                bold: true,
+                                size: 24,
+                                underline: {},
+                            }),
+                        ],
+                        spacing: { after: 300 },
+                    }),
+                    
+                    // Q&A pairs
+                    ...allQaStream.flatMap((qa, idx) => {
+                        const elements = [
+                            new Paragraph({
+                                children: [
+                                    new TextRun({
+                                        text: `Question ${idx + 1}:`,
+                                        bold: true,
+                                        size: 22,
+                                        color: "2E86AB",
+                                    }),
+                                ],
+                                spacing: { before: 200, after: 100 },
+                            }),
+                            
+                            new Paragraph({
+                                children: [
+                                    new TextRun({
+                                        text: qa.question,
+                                        size: 22,
+                                    }),
+                                ],
+                                spacing: { after: 150 },
+                                indent: { left: 360 }, // 0.25 inch indent
+                            }),
+                            
+                            new Paragraph({
+                                children: [
+                                    new TextRun({
+                                        text: `Answer ${idx + 1}:`,
+                                        bold: true,
+                                        size: 22,
+                                        color: "A23B72",
+                                    }),
+                                ],
+                                spacing: { after: 100 },
+                            }),
+                            
+                            new Paragraph({
+                                children: [
+                                    new TextRun({
+                                        text: qa.answer ?? "No answer provided",
+                                        size: 22,
+                                        color: "444444",
+                                    }),
+                                ],
+                                spacing: { after: 300 },
+                                indent: { left: 360 }, // 0.25 inch indent
+                            }),
+                        ];
+                        // Add a page break after every 3 Q&A pairs to avoid cramming
+                        if (idx > 0 && (idx + 1) % 3 === 0) {
+                            const pageBreakParagraph = new Paragraph({});
+                            pageBreakParagraph.addChildElement(new PageBreak());
+                            elements.push(pageBreakParagraph);
+                        }
+                        return elements;
+                    }),
+                ],
+            },
+        ],
+    });
+    
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, "chatbot-conversation-report.docx");
+};
 
     // Title selection functions
     const toggleTitle = (idx: number) => {
@@ -487,6 +741,101 @@ export const RfpProposal: React.FC = () => {
         setSelectedQuestions(selected => selected.filter(i => i !== idx));
     };
 
+    const processAllQuestions = async () => {
+        if (!results) return;
+        setSending(true);
+        setQaStream([]);
+        for (let idx = 0; idx < selectedQuestions.length; idx++) {
+            setCurrentlyProcessing(idx);
+            const qIdx = selectedQuestions[idx];
+            const question = results.questions[qIdx];
+            // Build context from selected titles and sections
+            const context = createChatbotMessage({
+                ...results,
+                questions: [question], // Only this question
+            });
+            try {
+                const response = await chatApi({
+                    messages: [{ content: context, role: "user" }],
+                    session_state: {},
+                }, false, undefined);
+                const data = await response.json();
+                const answer =
+                    typeof data.answer === "object" && data.answer.content
+                        ? data.answer.content
+                        : typeof data.answer === "string"
+                        ? data.answer
+                        : typeof data.message === "object" && data.message.content
+                        ? data.message.content
+                        : typeof data.message === "string"
+                        ? data.message
+                        : "No answer received.";
+                setQaStream(prev => [
+                    ...prev,
+                    { question, answer }
+                ]);
+            } catch (err) {
+                setQaStream(prev => [
+                    ...prev,
+                    { question, answer: "Error contacting chatbot." }
+                ]);
+            }
+        }
+        setCurrentlyProcessing(null);
+        setSending(false);
+    };
+
+    // Automatically process questions after extraction
+    React.useEffect(() => {
+        if (results && selectedQuestions.length > 0 && qaStream.length === 0 && !sending) {
+            processAllQuestions();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [results, selectedQuestions]);
+
+    const handleAskNewQuestion = async () => {
+        if (!newQuestion.trim()) return;
+        setAddingQuestion(true);
+        setCurrentlyProcessing(qaStream.length);
+        // Use selected titles/sections as context for the new question
+        const context = createChatbotMessage({
+            ...results!,
+            questions: [newQuestion]
+        });
+        try {
+            const response = await chatApi({
+                messages: [{ content: context, role: "user" }],
+                session_state: {},
+            }, false, undefined);
+            const data = await response.json();
+            const answer =
+                typeof data.answer === "object" && data.answer.content
+                    ? data.answer.content
+                    : typeof data.answer === "string"
+                    ? data.answer
+                    : typeof data.message === "object" && data.message.content
+                    ? data.message.content
+                    : typeof data.message === "string"
+                    ? data.message
+                    : "No answer received.";
+            setQaStream(prev => [
+                ...prev,
+                { question: newQuestion, answer }
+            ]);
+            setNewQuestion("");
+        } catch (err) {
+            setQaStream(prev => [
+                ...prev,
+                { question: newQuestion, answer: "Error contacting chatbot." }
+            ]);
+        }
+        setCurrentlyProcessing(null);
+        setAddingQuestion(false);
+    };
+
+    // Save current Q&A stream to local storage
+    localStorage.setItem("rfpQaStream", JSON.stringify(qaStream));
+
     return (
         <div className={styles.container}>
             <div className={styles.header}>
@@ -521,202 +870,185 @@ export const RfpProposal: React.FC = () => {
                 {error && <div style={{ color: "red", margin: 20 }}>{error}</div>}
                 
                 {results && (
-                    <div className={styles.results}>
-                        {/* Document Titles Section */}
-                        <div className={styles.section}>
-                            <h3><span className={styles.sectionIcon}>🏷️</span>Document Titles</h3>
-                            <div>
-                                {results.titles.length > 0
-                                    ? results.titles.map((title, i) => (
-                                        <div className={styles.item} key={i} style={{ display: "flex", alignItems: "center", marginBottom: "10px" }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedTitles.includes(i)}
-                                                onChange={() => toggleTitle(i)}
-                                                style={{ marginRight: 8 }}
-                                            />
-                                            <span style={{ flex: 1, fontWeight: "500", color: "#1e40af" }}>{title}</span>
-                                            <button
-                                                onClick={() => removeTitle(i)}
-                                                style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer" }}
-                                                title="Remove"
-                                            >
-                                                ✕
-                                            </button>
-                                        </div>
-                                    ))
-                                    : <div className={styles.item}>No document titles found.</div>
-                                }
-                            </div>
-                        </div>
+                    <div className={styles.results} style={{ display: "flex", gap: 32 }}>
+                        {/* Left Sidebar: Extracted Content */}
+                        <div
+    className={styles.sidebar}
+>
+    {/* Document Titles Section */}
+    <div className={styles.section}>
+        <h3><span className={styles.sectionIcon}>🏷️</span>Document Titles</h3>
+        <div>
+            {results.titles.length > 0
+                ? results.titles.map((title, i) => (
+                    <div className={styles.item} key={i} style={{ display: "flex", alignItems: "center", marginBottom: "10px" }}>
+                        <input
+                            type="checkbox"
+                            checked={selectedTitles.includes(i)}
+                            onChange={() => toggleTitle(i)}
+                            style={{ marginRight: 8 }}
+                        />
+                        <span style={{ flex: 1, fontWeight: "500", color: "#1e40af" }}>{title}</span>
+                        <button
+                            onClick={() => removeTitle(i)}
+                            style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer" }}
+                            title="Remove"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                ))
+                : <div className={styles.item}>No document titles found.</div>
+            }
+        </div>
+    </div>
 
-                        {/* Header Sections with Content and Paragraphs */}
-                        <div className={styles.section}>
-                            <h3><span className={styles.sectionIcon}>📋</span>Document Sections with Paragraphs</h3>
-                            <div>
-                                {results.headerSections.length > 0
-                                    ? results.headerSections.map((section, i) => (
-                                        <div className={styles.item} key={i} style={{ display: "flex", alignItems: "flex-start", marginBottom: "20px" }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedHeaderSections.includes(i)}
-                                                onChange={() => toggleHeaderSection(i)}
-                                                style={{ marginRight: 8, marginTop: 2 }}
-                                            />
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ fontWeight: "600", marginBottom: "8px", color: "#2563eb" }}>
-                                                    {section.title}
-                                                </div>
-                                                
-                                                {/* Show paragraphs individually if multiple, otherwise show as single content */}
-                                                {section.paragraphs.length > 1 ? (
-                                                    <div style={{ marginTop: "10px" }}>
-                                                        {section.paragraphs.map((paragraph, pIndex) => (
-                                                            <div key={pIndex} style={{ 
-                                                                marginBottom: "12px",
-                                                                padding: "8px 12px",
-                                                                backgroundColor: "rgba(0,0,0,0.03)",
-                                                                borderRadius: "6px",
-                                                                border: "1px solid rgba(0,0,0,0.08)"
-                                                            }}>
-                                                                <div style={{ 
-                                                                    fontSize: "0.85em", 
-                                                                    fontWeight: "600", 
-                                                                    color: "#059669",
-                                                                    marginBottom: "4px" 
-                                                                }}>
-                                                                    Paragraph {paragraph.paragraphNumber}:
-                                                                </div>
-                                                                <div style={{ 
-                                                                    fontSize: "0.9em", 
-                                                                    color: "#4b5563",
-                                                                    lineHeight: "1.4"
-                                                                }}>
-                                                                    {paragraph.content}
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <div style={{ 
-                                                        fontSize: "0.9em", 
-                                                        color: "#4b5563",
-                                                        whiteSpace: "pre-wrap",
-                                                        lineHeight: "1.4",
-                                                        marginTop: "8px",
-                                                        padding: "10px",
-                                                        backgroundColor: "rgba(0,0,0,0.05)",
-                                                        borderRadius: "6px",
-                                                        border: "1px solid rgba(0,0,0,0.1)"
-                                                    }}>
-                                                        {section.content}
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <button
-                                                onClick={() => removeHeaderSection(i)}
-                                                style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer" }}
-                                                title="Remove"
-                                            >
-                                                ✕
-                                            </button>
-                                        </div>
-                                    ))
-                                    : <div className={styles.item}>No sections with content found in the document.</div>
-                                }
-                            </div>
+    {/* Header Sections with Content and Paragraphs */}
+    <div className={styles.section}>
+        <h3><span className={styles.sectionIcon}>📋</span>Document Sections with Paragraphs</h3>
+        <div>
+            {results.headerSections.length > 0
+                ? results.headerSections.map((section, i) => (
+                    <div className={styles.item} key={i} style={{ display: "flex", alignItems: "flex-start", marginBottom: "20px" }}>
+                        <input
+                            type="checkbox"
+                            checked={selectedHeaderSections.includes(i)}
+                            onChange={() => toggleHeaderSection(i)}
+                            style={{ marginRight: 8, marginTop: 2 }}
+                        />
+                        <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: "600", marginBottom: "8px", color: "#2563eb" }}>
+                                {section.title}
                         </div>
+                        <div style={{ fontSize: "0.9em", color: "#555" }}>
+                            {section.paragraphs.length} {section.paragraphs.length === 1 ? "paragraph" : "paragraphs"}
+                        </div>
+                    </div>
+                </div>
+            ))
+                : <div className={styles.item}>No document sections found.</div>
+            }
+        </div>
+    </div>
 
-                        {/* Questions Section */}
-                        <div className={styles.section}>
-                            <h3><span className={styles.sectionIcon}>❓</span>Questions Found</h3>
-                            <div>
-                                {results.questions.length > 0
-                                    ? results.questions.map((q, i) => (
-                                        <div className={styles.item} key={i} style={{ display: "flex", alignItems: "center" }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedQuestions.includes(i)}
-                                                onChange={() => toggleQuestion(i)}
-                                                style={{ marginRight: 8 }}
-                                            />
-                                            <span style={{ flex: 1 }}>{q}</span>
-                                            <button
-                                                onClick={() => removeQuestion(i)}
-                                                style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer" }}
-                                                title="Remove"
-                                            >
-                                                ✕
-                                            </button>
-                                        </div>
-                                    ))
-                                    : <div className={styles.item}>No questions found in the document.</div>
-                                }
-                            </div>
-                        </div>
+    {/* Questions Section */}
+    <div className={styles.section}>
+        <h3><span className={styles.sectionIcon}>❓</span>Questions</h3>
+        <div>
+            {results.questions.length > 0
+                ? results.questions.map((question, i) => (
+                    <div className={styles.item} key={i} style={{ display: "flex", alignItems: "center", marginBottom: "10px" }}>
+                        <input
+                            type="checkbox"
+                            checked={selectedQuestions.includes(i)}
+                            onChange={() => toggleQuestion(i)}
+                            style={{ marginRight: 8 }}
+                        />
+                        <span style={{ flex: 1, fontWeight: "500", color: "#1e40af" }}>{question}</span>
+                        <button
+                            onClick={() => removeQuestion(i)}
+                            style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer" }}
+                            title="Remove"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                ))
+                : <div className={styles.item}>No questions found in the document.</div>
+            }
+        </div>
+    </div>
+</div>
 
-                        {/* Formatted Output Section */}
-                        <div className={styles.chatbotSection}>
-                            <h3>📋 Extracted Content</h3>
-                            <p style={{ marginBottom: 20, opacity: 0.9 }}>
-                                Copy the formatted content below to use in your chatbot. Sections with multiple paragraphs include paragraph numbers for precise referencing:
-                            </p>
-                            <div className={styles.formattedOutput}>
-                                <div style={{ background: "rgba(255,255,255,0.1)", borderRadius: 10, padding: 20, marginBottom: 15 }}>
-                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                                        <span style={{ fontWeight: 600 }}>Formatted Message:</span>
-                                        <button className={styles.copyBtn} onClick={handleCopy}>
-                                            📋 Copy
-                                        </button>
-                                    </div>
-                                    <textarea
-                                        readOnly
-                                        value={createChatbotMessage()}
-                                        style={{
-                                            width: "100%",
-                                            height: 300,
-                                            background: "rgba(255,255,255,0.9)",
-                                            border: "none",
-                                            borderRadius: 8,
-                                            padding: 15,
-                                            fontFamily: "'Courier New', monospace",
-                                            fontSize: "0.9rem",
-                                            resize: "vertical",
-                                            color: "#333"
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Chatbot Interaction Section */}
-                        <div className={styles.chatbotInteraction}>
-                            <h3>🤖 Chatbot Interaction</h3>
-                            <button
-                                className={styles.sendToChatbotBtn}
-                                onClick={() => sendToChatbot(createChatbotMessage())}
-                                disabled={sending}
-                            >
-                                {sending ? "Sending to Chatbot..." : "Send to Chatbot"}
-                            </button>
-                            
-                            {sending && <div>Sending to chatbot...</div>}
-                            
-                            {chatbotAnswer && (
-                                <div className={styles.section}>
-                                    <h3>🤖 Chatbot Answer</h3>
-                                    <div>{chatbotAnswer}</div>
-                                    <div style={{ marginTop: 16 }}>
-                                        <button className={styles.copyBtn} onClick={handleDownloadPdf}>
-                                            📄 Download as PDF
-                                        </button>
-                                        <button className={styles.copyBtn} onClick={handleDownloadWord} style={{ marginLeft: 8 }}>
-                                            📝 Download as Word
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                        {/* Right: Chatbot Q&A Stream */}
+                        <div
+    className={styles.qaStream}
+   
+>
+    <h3 style={{ marginBottom: 24 }}>🤖 Chatbot Answers</h3>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 18 }}>
+        {qaStream.length === 0 && (
+            <div style={{ color: "#888", textAlign: "center", marginTop: 60 }}>
+                <span>No answers yet. Questions will appear here as they are processed.</span>
+            </div>
+        )}
+        {qaStream.map((qa, idx) => (
+            <div key={idx} style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+                marginBottom: 8
+            }}>
+                <div style={{
+                    background: "#2563eb",
+                    color: "#fff",
+                    borderRadius: "16px 16px 0 16px",
+                    padding: "12px 18px",
+                    maxWidth: "80%",
+                    fontWeight: 500,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.06)"
+                }}>
+                    <span style={{ fontSize: "0.95em", opacity: 0.8 }}>Q{idx + 1}: {qa.question}</span>
+                </div>
+                <div style={{
+                    background: "#fff",
+                    color: "#176317",
+                    borderRadius: "0 16px 16px 16px",
+                    padding: "12px 18px",
+                    marginTop: 6,
+                    maxWidth: "80%",
+                    fontSize: "1em",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                    border: "1px solid #e0e7ff"
+                }}>
+                    {qa.answer
+                        ? qa.answer
+                        : (currentlyProcessing === idx ? "Processing..." : "Waiting...")}
+                </div>
+            </div>
+        ))}
+        {currentlyProcessing !== null && (
+            <div style={{ marginTop: 12, color: "#888", textAlign: "center" }}>
+                Processing question {currentlyProcessing + 1} of {selectedQuestions.length}...
+            </div>
+        )}
+    </div>
+    {/* Download buttons */}
+    <div style={{ marginTop: 24, display: "flex", gap: 12, justifyContent: "flex-end" }}>
+        <button className={styles.copyBtn} onClick={handleDownloadPdf}>📄 Download PDF</button>
+        <button className={styles.copyBtn} onClick={handleDownloadWord}>📝 Download Word</button>
+    </div>
+    {/* Ask more questions */}
+    <div style={{ marginTop: 32, display: "flex", gap: 8 }}>
+        <input
+            type="text"
+            value={newQuestion}
+            onChange={e => setNewQuestion(e.target.value)}
+            placeholder="Ask another question..."
+            style={{
+                flex: 1,
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                fontSize: "1rem"
+            }}
+            disabled={addingQuestion}
+            onKeyDown={e => {
+                if (e.key === "Enter" && !addingQuestion && newQuestion.trim()) {
+                    handleAskNewQuestion();
+                }
+            }}
+        />
+        <button
+            className={styles.copyBtn}
+            onClick={handleAskNewQuestion}
+            disabled={addingQuestion || !newQuestion.trim()}
+            style={{ minWidth: 120 }}
+        >
+            {addingQuestion ? "Asking..." : "Ask"}
+        </button>
+    </div>
+</div>
                     </div>
                 )}
             </div>
