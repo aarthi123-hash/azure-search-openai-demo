@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Helmet } from "react-helmet-async";
 import { Panel, DefaultButton } from "@fluentui/react";
 import readNDJSONStream from "ndjson-readablestream";
+import { ChevronDown, Database, Search } from 'lucide-react';
 
 import appLogo from "../../assets/applogo.svg";
 import s2pic from "../../assets/s2pic.png";
@@ -423,14 +424,19 @@ const Chat = () => {
 
     // Fetch available indexes on component mount
     useEffect(() => {
-        console.log("Attempting to fetch /api/search_indexes");
-        fetch("/api/search_indexes")
+        console.log("Attempting to fetch /api/search-indexes");
+        fetch("/api/search-indexes")
             .then(res => res.json())
             .then(data => {
                 console.log("Fetched indexes:", data);
                 if (data.indexes && Array.isArray(data.indexes)) {
-                    setIndexes(data.indexes.map((idx: string) => ({ key: idx, text: idx })));
-                    setSelectedIndex(data.indexes[0] || "");
+                    // Set your preferred default index
+                    const defaultIndex = "synmontyrag-1752075318880";
+                    let indexes = data.indexes;
+                    indexes = indexes.filter((i: string) => i !== defaultIndex);
+                    indexes.unshift(defaultIndex);
+                    setIndexes(indexes.map((idx: string) => ({ key: idx, text: idx })));
+                    setSelectedIndex(defaultIndex);
                 }
             })
             .catch(err => console.error("Error fetching indexes:", err));
@@ -468,14 +474,31 @@ const Chat = () => {
             </div>
             <div className={styles.chatRoot} style={{ marginLeft: isHistoryPanelOpen ? "300px" : "0" }}>
                 <div className={styles.chatContainer}>
+                    {/* Improved Index dropdown UI */}
+                    <div style={{ marginBottom: 24, maxWidth: 340, display: "flex", alignItems: "center", gap: 12, background: "#f7f7fa", borderRadius: 8, padding: "12px 16px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                        <Database size={20} style={{ marginRight: 8, color: "#6c63ff" }} />
+                        <label style={{ fontWeight: "bold", marginRight: 8, minWidth: 90 }}>Select Index:</label>
+                        {indexes.length > 0 ? (
+                            <select
+                                value={selectedIndex}
+                                onChange={e => setSelectedIndex(e.target.value)}
+                                style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 15, background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}
+                            >
+                                {indexes.map(opt => (
+                                    <option key={opt.key} value={opt.key} style={{ padding: "8px 12px" }}>{opt.text}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <span style={{ color: '#888', marginLeft: 8 }}>No indexes found</span>
+                        )}
+                    </div>
+                    {/* Chat content and input */}
                     {!lastQuestionRef.current ? (
                         <div className={styles.chatEmptyState}>
                             <img src={s2pic} alt="App logo" width="120" height="120" />
-
                             <h1 className={styles.chatEmptyStateTitle}>{t("chatEmptyStateTitle")}</h1>
                             <h2 className={styles.chatEmptyStateSubtitle}>{t("chatEmptyStateSubtitle")}</h2>
                             {showLanguagePicker && <LanguagePicker onLanguageChange={newLang => i18n.changeLanguage(newLang)} />}
-
                             <ExampleList onExampleClicked={onExampleClicked} useGPT4V={useGPT4V} />
                         </div>
                     ) : (
@@ -545,22 +568,7 @@ const Chat = () => {
                             <div ref={chatMessageStreamEnd} />
                         </div>
                     )}
-
                     <div className={styles.chatInput}>
-                        {indexes.length > 0 && (
-                            <div style={{ marginBottom: 16 }}>
-                                <label style={{ fontWeight: "bold", marginRight: 8 }}>Select Index:</label>
-                                <select
-                                    value={selectedIndex}
-                                    onChange={e => setSelectedIndex(e.target.value)}
-                                    style={{ padding: 6, borderRadius: 4, border: "1px solid #ccc" }}
-                                >
-                                    {indexes.map(opt => (
-                                        <option key={opt.key} value={opt.key}>{opt.text}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
                         <QuestionInput
                             clearOnSend
                             placeholder={t("defaultExamples.placeholder")}

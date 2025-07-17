@@ -139,6 +139,17 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         minimum_reranker_score = overrides.get("minimum_reranker_score", 0.0)
         search_index_filter = self.build_filter(overrides, auth_claims)
 
+        # Use override index if provided
+        search_index_name = overrides.get("search_index", self.search_index_name)
+        # If the index is overridden, create a new SearchClient for that index
+        search_client = self.search_client
+        if search_index_name != self.search_index_name:
+            search_client = SearchClient(
+                endpoint=self.search_client._endpoint,
+                index_name=search_index_name,
+                credential=self.search_client._credential,
+            )
+
         original_user_query = messages[-1]["content"]
         if not isinstance(original_user_query, str):
             raise ValueError("The most recent message content must be a string.")
@@ -175,6 +186,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         if use_vector_search:
             vectors.append(await self.compute_text_embedding(query_text))
 
+        # Use the correct search client for the selected index
         results = await self.search(
             top,
             query_text,
@@ -187,6 +199,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
             minimum_search_score,
             minimum_reranker_score,
             use_query_rewriting,
+            search_client=search_client,
         )
 
         # STEP 3: Generate a contextual and content specific answer using the search results and chat history
@@ -215,6 +228,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
                         "filter": search_index_filter,
                         "use_vector_search": use_vector_search,
                         "use_text_search": use_text_search,
+                        "search_index": search_index_name,
                     },
                 ),
                 ThoughtStep(
@@ -239,10 +253,11 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         # 50 is the amount of documents that the reranker can process per query
         max_docs_for_reranker = max_subqueries * 50
 
+        search_index_name = overrides.get("search_index", self.search_index_name)
         response, results = await self.run_agentic_retrieval(
             messages=messages,
             agent_client=self.agent_client,
-            search_index_name=self.search_index_name,
+            search_index_name=search_index_name,
             top=top,
             filter_add_on=search_index_filter,
             minimum_reranker_score=minimum_reranker_score,

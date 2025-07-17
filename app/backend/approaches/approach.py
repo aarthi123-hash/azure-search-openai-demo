@@ -198,12 +198,20 @@ class Approach(ABC):
         minimum_search_score: Optional[float] = None,
         minimum_reranker_score: Optional[float] = None,
         use_query_rewriting: Optional[bool] = None,
+        search_client: Optional[SearchClient] = None,
     ) -> list[Document]:
+        # Use the provided search_client if given, otherwise default to self.search_client
+        client = search_client if search_client is not None else self.search_client
         search_text = query_text if use_text_search else ""
         search_vectors = vectors if use_vector_search else []
-        semantic_config = os.getenv("AZURE_SEARCH_SEMANTIC_CONFIG", "rag-1751458760568-semantic-configuration")
+        # Dynamically set semantic config name based on index name
+        index_name = getattr(client, "_index_name", None) or getattr(client, "index_name", None)
+        if index_name:
+            semantic_config = f"{index_name}-semantic-configuration"
+        else:
+            semantic_config = os.getenv("AZURE_SEARCH_SEMANTIC_CONFIG", "default-semantic-configuration")
         if use_semantic_ranker:
-            results = await self.search_client.search(
+            results = await client.search(
                 search_text=search_text,
                 filter=filter,
                 top=top,
@@ -217,7 +225,7 @@ class Approach(ABC):
                 semantic_query=query_text,
             )
         else:
-            results = await self.search_client.search(
+            results = await client.search(
                 search_text=search_text,
                 filter=filter,
                 top=top,

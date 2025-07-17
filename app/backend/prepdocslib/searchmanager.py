@@ -261,14 +261,15 @@ class SearchManager:
                     vector_search_profiles.append(image_vector_search_profile)
                     vector_algorithms.append(image_vector_algorithm)
 
+                semantic_config_name = f"rag-{self.search_info.index_name}-semantic-configuration"
                 index = SearchIndex(
                     name=self.search_info.index_name,
                     fields=fields,
                     semantic_search=SemanticSearch(
-                        default_configuration_name="synmontyrag-1752075318880-semantic-configuration",
+                        default_configuration_name=semantic_config_name,
                         configurations=[
                             SemanticConfiguration(
-                                name="synmontyrag-1752075318880-semantic-configuration",
+                                name=semantic_config_name,
                                 prioritized_fields=SemanticPrioritizedFields(
                                     title_field=SemanticField(field_name="title"),
                                     content_fields=[SemanticField(field_name="chunk")],
@@ -417,12 +418,15 @@ class SearchManager:
             logger.info("Agent %s created successfully", self.search_info.agent_name)
 
     async def update_content(
-        self, sections: list[Section], image_embeddings: Optional[list[list[float]]] = None, url: Optional[str] = None
+        self, sections: list[Section], image_embeddings: Optional[list[list[float]]] = None, url: Optional[str] = None, index_name: Optional[str] = None
     ):
         MAX_BATCH_SIZE = 1000
         section_batches = [sections[i : i + MAX_BATCH_SIZE] for i in range(0, len(sections), MAX_BATCH_SIZE)]
 
-        async with self.search_info.create_search_client() as search_client:
+        # Use the override index name if provided
+        target_index_name = index_name or self.search_info.index_name
+
+        async with self.search_info.create_search_client(index_name=target_index_name) as search_client:
             for batch_index, batch in enumerate(section_batches):
                 documents = [
                     {

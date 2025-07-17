@@ -104,6 +104,8 @@ from prepdocs import (
 from prepdocslib.filestrategy import UploadUserFileStrategy
 from prepdocslib.listfilestrategy import File
 
+from routes.search_indexes import search_indexes_bp
+
 bp = Blueprint("routes", __name__, static_folder="static")
 # Fix Windows registry issue with mimetypes
 mimetypes.add_type("application/javascript", ".js")
@@ -807,6 +809,7 @@ def create_app():
     app = Quart(__name__)
     app.register_blueprint(bp)
     app.register_blueprint(chat_history_cosmosdb_bp)
+    app.register_blueprint(search_indexes_bp)  # <-- Add this line
 
     if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
         app.logger.info("APPLICATIONINSIGHTS_CONNECTION_STRING is set, enabling Azure Monitor")
