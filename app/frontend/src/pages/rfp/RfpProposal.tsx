@@ -17,7 +17,8 @@ const headerPatterns = [
     /^(chapter|section|part|title|heading|overview|introduction|conclusion|summary|background|objective|scope|requirements|specifications|deliverables|timeline|budget|proposal|executive summary|technical approach|methodology|team|experience|references|appendix)\s*[\d\w\s]*[:\-]?\s*$/i,
     /^[\d]+\.?\d*\.?\s+[A-Z][^.!?]*$/,
     /^[A-Z][A-Z\s]{2,}$/,
-    /^[A-Z][^.!?]*[A-Z][^.!?]*$/
+    /^[A-Z][^.!?]*[A-Z][^.!?]*$/,
+    /^\d+\.\d+\s+.+$/, // Matches "3.1 Task Title", "3.2 Another Task", etc.
 ];
 
 // Title patterns for RFP/RFI documents (first page titles)
@@ -40,6 +41,7 @@ const titlePatterns = [
     /^\*\*.*\*\*$/,  // Bold markdown format
     /^.*\b(OASIS|SB|ODNI|DOD|DHS|HHS|VA|USDA)\b.*$/i,  // Common agency acronyms
 ];
+
 
 interface HeaderParagraph {
     paragraphNumber: number;
@@ -301,6 +303,8 @@ export const RfpProposal: React.FC = () => {
     const [newQuestion, setNewQuestion] = useState("");
     const [addingQuestion, setAddingQuestion] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [selectedParagraphs, setSelectedParagraphs] = useState<{ [key: string]: boolean }>({});
+
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -702,7 +706,93 @@ const handleDownloadWord = async () => {
     saveAs(blob, "chatbot-conversation-report.docx");
 };
 
-    // Title selection functions
+    const handleSendSelectedToChatbot = async () => {
+        if (!results) return;
+        setSending(true);
+        setQaStream([]);
+        setCurrentlyProcessing(null);
+
+        // Gather selected paragraphs' content
+        const selectedParaKeys = Object.keys(selectedParagraphs).filter(k => selectedParagraphs[k]);
+        const selectedParagraphsContent = selectedParaKeys.map(key => {
+            const [sectionIdx] = key.split('-').map(Number);
+            const section = results.headerSections[sectionIdx];
+            return `Section: ${section.title}\n${section.content}`;
+        });
+
+        // Send selected paragraphs as individual queries
+        for (let idx = 0; idx < selectedParaKeys.length; idx++) {
+            setCurrentlyProcessing(idx);
+            const [sectionIdx, paraIdx] = selectedParaKeys[idx].split('-').map(Number);
+            const section = results.headerSections[sectionIdx];
+            const paragraph = section.paragraphs[paraIdx];
+            const context = `Section: ${section.title}\nParagraph ${paragraph.paragraphNumber}: ${paragraph.content}`;
+            try {
+                const response = await chatApi({
+                    messages: [{ content: context, role: "user" }],
+                    session_state: {},
+                }, false, undefined);
+                const data = await response.json();
+                const answer =
+                    typeof data.answer === "object" && data.answer.content
+                        ? data.answer.content
+                        : typeof data.answer === "string"
+                        ? data.answer
+                        : typeof data.message === "object" && data.message.content
+                        ? data.message.content
+                        : typeof data.message === "string"
+                        ? data.message
+                        : "No answer received.";
+                setQaStream(prev => [
+                    ...prev,
+                    { question: `Section: ${section.title} - Paragraph ${paragraph.paragraphNumber}`, answer }
+                ]);
+            } catch (err) {
+                setQaStream(prev => [
+                    ...prev,
+                    { question: `Section: ${section.title} - Paragraph ${paragraph.paragraphNumber}`, answer: "Error contacting chatbot." }
+                ]);
+            }
+        }
+
+        // Send selected questions, including selected paragraphs as context
+        for (let idx = 0; idx < selectedQuestions.length; idx++) {
+            setCurrentlyProcessing(selectedParaKeys.length + idx);
+            const question = results.questions[selectedQuestions[idx]];
+            // Combine all selected paragraphs as context for the question
+            const context = `${selectedParagraphsContent.join('\n\n')}\n\nQuestion: ${question}`;
+            try {
+                const response = await chatApi({
+                    messages: [{ content: context, role: "user" }],
+                    session_state: {},
+                }, false, undefined);
+                const data = await response.json();
+                const answer =
+                    typeof data.answer === "object" && data.answer.content
+                        ? data.answer.content
+                        : typeof data.answer === "string"
+                        ? data.answer
+                        : typeof data.message === "object" && data.message.content
+                        ? data.message.content
+                        : typeof data.message === "string"
+                        ? data.message
+                        : "No answer received.";
+                setQaStream(prev => [
+                    ...prev,
+                    { question, answer }
+                ]);
+            } catch (err) {
+                setQaStream(prev => [
+                    ...prev,
+                    { question, answer: "Error contacting chatbot." }
+                ]);
+            }
+        }
+
+        setCurrentlyProcessing(null);
+        setSending(false);
+    };
+
     const toggleTitle = (idx: number) => {
         setSelectedTitles(selected =>
             selected.includes(idx)
@@ -785,13 +875,271 @@ const handleDownloadWord = async () => {
         setSending(false);
     };
 
-    // Automatically process questions after extraction
-    React.useEffect(() => {
-        if (results && selectedQuestions.length > 0 && qaStream.length === 0 && !sending) {
-            processAllQuestions();
+    const processAllSections = async () => {
+        if (!results) return;
+        setSending(true);
+        setQaStream([]);
+
+        // Find the index of the "Scope" section (case-insensitive, may have number prefix)
+        const scopeIdx = results.headerSections.findIndex(section =>
+            /\bScope\b/i.test(section.title)
+        );
+        if (scopeIdx === -1) {
+            setSending(false);
+            return;
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [results, selectedQuestions]);
+
+        // Find the next section that starts with a number (e.g., "4", "5", etc.)
+        let endIdx = results.headerSections.length;
+        for (let i = scopeIdx + 1; i < results.headerSections.length; i++) {
+            // Match headings like "4", "4.", "4 Title", "4. Title"
+            if (/^\d+(\.| )/.test(results.headerSections[i].title.trim())) {
+                endIdx = i;
+                break;
+            }
+        }
+
+        // Only process sections after "Scope" and before the next numbered section
+        const sectionsToProcess = results.headerSections.slice(scopeIdx + 1, endIdx);
+
+        for (let idx = 0; idx < sectionsToProcess.length; idx++) {
+            setCurrentlyProcessing(idx);
+            const section = sectionsToProcess[idx];
+            // Build context: only the section heading and its content
+            const context = `Section: ${section.title}\n\n${section.content}`;
+            try {
+                const response = await chatApi({
+                    messages: [{ content: context, role: "user" }],
+                    session_state: {},
+                }, false, undefined);
+                const data = await response.json();
+                const answer =
+                    typeof data.answer === "object" && data.answer.content
+                        ? data.answer.content
+                        : typeof data.answer === "string"
+                        ? data.answer
+                        : typeof data.message === "object" && data.message.content
+                        ? data.message.content
+                        : typeof data.message === "string"
+                        ? data.message
+                        : "No answer received.";
+                setQaStream(prev => [
+                    ...prev,
+                    { question: section.title, answer }
+                ]);
+            } catch (err) {
+                setQaStream(prev => [
+                    ...prev,
+                    { question: section.title, answer: "Error contacting chatbot." }
+                ]);
+            }
+        }
+        setCurrentlyProcessing(null);
+        setSending(false);
+    };
+
+    const processAllSectionsAndQuestions = async () => {
+        if (!results) return;
+        setSending(true);
+        setQaStream([]);
+
+        // Find the index of the "Scope" section (case-insensitive, may have number prefix)
+        const scopeIdx = results.headerSections.findIndex(section =>
+            /\bScope\b/i.test(section.title)
+        );
+        if (scopeIdx === -1) {
+            setSending(false);
+            return;
+        }
+
+        // Find the next section that starts with a number (e.g., "4", "5", etc.)
+        let endIdx = results.headerSections.length;
+        for (let i = scopeIdx + 1; i < results.headerSections.length; i++) {
+            if (/^\d+(\.| )/.test(results.headerSections[i].title.trim())) {
+                endIdx = i;
+                break;
+            }
+        }
+
+        // Only process sections after "Scope" and before the next numbered section
+        const sectionsToProcess = results.headerSections.slice(scopeIdx + 1, endIdx);
+
+        // Process sections
+        for (let idx = 0; idx < sectionsToProcess.length; idx++) {
+            setCurrentlyProcessing(idx);
+            const section = sectionsToProcess[idx];
+            const context = `Section: ${section.title}\n\n${section.content}`;
+            try {
+                const response = await chatApi({
+                    messages: [{ content: context, role: "user" }],
+                    session_state: {},
+                }, false, undefined);
+                const data = await response.json();
+                const answer =
+                    typeof data.answer === "object" && data.answer.content
+                        ? data.answer.content
+                        : typeof data.answer === "string"
+                        ? data.answer
+                        : typeof data.message === "object" && data.message.content
+                        ? data.message.content
+                        : typeof data.message === "string"
+                        ? data.message
+                        : "No answer received.";
+                setQaStream(prev => [
+                    ...prev,
+                    { question: section.title, answer }
+                ]);
+            } catch (err) {
+                setQaStream(prev => [
+                    ...prev,
+                    { question: section.title, answer: "Error contacting chatbot." }
+                ]);
+            }
+        }
+
+        // Process questions as individual queries
+        for (let qIdx = 0; qIdx < results.questions.length; qIdx++) {
+            setCurrentlyProcessing(sectionsToProcess.length + qIdx);
+            const question = results.questions[qIdx];
+            // Optionally, you can include selected sections as context if needed
+            const context = `Question: ${question}`;
+            try {
+                const response = await chatApi({
+                    messages: [{ content: context, role: "user" }],
+                    session_state: {},
+                }, false, undefined);
+                const data = await response.json();
+                const answer =
+                    typeof data.answer === "object" && data.answer.content
+                        ? data.answer.content
+                        : typeof data.answer === "string"
+                        ? data.answer
+                        : typeof data.message === "object" && data.message.content
+                        ? data.message.content
+                        : typeof data.message === "string"
+                        ? data.message
+                        : "No answer received.";
+                setQaStream(prev => [
+                    ...prev,
+                    { question, answer }
+                ]);
+            } catch (err) {
+                setQaStream(prev => [
+                    ...prev,
+                    { question, answer: "Error contacting chatbot." }
+                ]);
+            }
+        }
+
+        setCurrentlyProcessing(null);
+        setSending(false);
+    };
+
+    const processScopeAndTasks = async () => {
+        if (!results) return;
+        setSending(true);
+        setQaStream([]);
+
+        // Find the index and number of the "Scope" section (e.g., "3 Scope")
+        const scopeIdx = results.headerSections.findIndex(section =>
+            /\bScope\b/i.test(section.title)
+        );
+        if (scopeIdx === -1) {
+            setSending(false);
+            return;
+        }
+
+        // Extract the section number from the Scope title (e.g., "3 Scope" -> 3)
+        const scopeTitle = results.headerSections[scopeIdx].title.trim();
+        const scopeNumberMatch = scopeTitle.match(/^(\d+)/);
+        const scopeNumber = scopeNumberMatch ? scopeNumberMatch[1] : null;
+
+        // Collect all subsections under Scope (e.g., 3.1, 3.2, etc.)
+        const sectionsToProcess = [results.headerSections[scopeIdx]];
+        for (let i = scopeIdx + 1; i < results.headerSections.length; i++) {
+            const title = results.headerSections[i].title.trim();
+            // Match subsection like "3.1", "3.2", etc.
+            if (scopeNumber && new RegExp(`^${scopeNumber}\\.`).test(title)) {
+                sectionsToProcess.push(results.headerSections[i]);
+            } else {
+                // Stop at the next top-level section (e.g., "4", "5", etc.)
+                if (/^\d+(\.| )/.test(title) && !new RegExp(`^${scopeNumber}\\.`).test(title)) {
+                    break;
+                }
+            }
+        }
+
+        // Send each section (Scope and its tasks) as a separate query
+        for (let idx = 0; idx < sectionsToProcess.length; idx++) {
+            setCurrentlyProcessing(idx);
+            const section = sectionsToProcess[idx];
+            const context = `Section: ${section.title}\n\n${section.content}`;
+            try {
+                const response = await chatApi({
+                    messages: [{ content: context, role: "user" }],
+                    session_state: {},
+                }, false, undefined);
+                const data = await response.json();
+                const answer =
+                    typeof data.answer === "object" && data.answer.content
+                        ? data.answer.content
+                        : typeof data.answer === "string"
+                        ? data.answer
+                        : typeof data.message === "object" && data.message.content
+                        ? data.message.content
+                        : typeof data.message === "string"
+                        ? data.message
+                        : "No answer received.";
+                setQaStream(prev => [
+                    ...prev,
+                    { question: section.title, answer }
+                ]);
+            } catch (err) {
+                setQaStream(prev => [
+                    ...prev,
+                    { question: section.title, answer: "Error contacting chatbot." }
+                ]);
+            }
+        }
+
+        // Send each question as a separate query, with only Scope section as context
+        for (let qIdx = 0; qIdx < results.questions.length; qIdx++) {
+            setCurrentlyProcessing(sectionsToProcess.length + qIdx);
+            const question = results.questions[qIdx];
+            const context = `Section: ${results.headerSections[scopeIdx].title}\n\n${results.headerSections[scopeIdx].content}\n\nQuestion: ${question}`;
+            try {
+                const response = await chatApi({
+                    messages: [{ content: context, role: "user" }],
+                    session_state: {},
+                }, false, undefined);
+                const data = await response.json();
+                const answer =
+                    typeof data.answer === "object" && data.answer.content
+                        ? data.answer.content
+                        : typeof data.answer === "string"
+                        ? data.answer
+                        : typeof data.message === "object" && data.message.content
+                        ? data.message.content
+                        : typeof data.message === "string"
+                        ? data.message
+                        : "No answer received.";
+                setQaStream(prev => [
+                    ...prev,
+                    { question, answer }
+                ]);
+            } catch (err) {
+                setQaStream(prev => [
+                    ...prev,
+                    { question, answer: "Error contacting chatbot." }
+                ]);
+            }
+        }
+
+        setCurrentlyProcessing(null);
+        setSending(false);
+    };
+
+
 
     const handleAskNewQuestion = async () => {
         if (!newQuestion.trim()) return;
@@ -875,33 +1223,6 @@ const handleDownloadWord = async () => {
                         <div
     className={styles.sidebar}
 >
-    {/* Document Titles Section */}
-    <div className={styles.section}>
-        <h3><span className={styles.sectionIcon}>🏷️</span>Document Titles</h3>
-        <div>
-            {results.titles.length > 0
-                ? results.titles.map((title, i) => (
-                    <div className={styles.item} key={i} style={{ display: "flex", alignItems: "center", marginBottom: "10px" }}>
-                        <input
-                            type="checkbox"
-                            checked={selectedTitles.includes(i)}
-                            onChange={() => toggleTitle(i)}
-                            style={{ marginRight: 8 }}
-                        />
-                        <span style={{ flex: 1, fontWeight: "500", color: "#1e40af" }}>{title}</span>
-                        <button
-                            onClick={() => removeTitle(i)}
-                            style={{ marginLeft: 8, color: "red", background: "none", border: "none", cursor: "pointer" }}
-                            title="Remove"
-                        >
-                            ✕
-                        </button>
-                    </div>
-                ))
-                : <div className={styles.item}>No document titles found.</div>
-            }
-        </div>
-    </div>
 
     {/* Header Sections with Content and Paragraphs */}
     <div className={styles.section}>
@@ -909,23 +1230,30 @@ const handleDownloadWord = async () => {
         <div>
             {results.headerSections.length > 0
                 ? results.headerSections.map((section, i) => (
-                    <div className={styles.item} key={i} style={{ display: "flex", alignItems: "flex-start", marginBottom: "20px" }}>
-                        <input
-                            type="checkbox"
-                            checked={selectedHeaderSections.includes(i)}
-                            onChange={() => toggleHeaderSection(i)}
-                            style={{ marginRight: 8, marginTop: 2 }}
-                        />
-                        <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: "600", marginBottom: "8px", color: "#2563eb" }}>
-                                {section.title}
+                    <div className={styles.item} key={i} style={{ marginBottom: "20px" }}>
+                        <div style={{ fontWeight: "600", marginBottom: "8px", color: "#2563eb" }}>
+                            {section.title}
                         </div>
-                        <div style={{ fontSize: "0.9em", color: "#555" }}>
-                            {section.paragraphs.length} {section.paragraphs.length === 1 ? "paragraph" : "paragraphs"}
-                        </div>
+                        {section.paragraphs.map((paragraph, pIdx) => (
+                            <div key={pIdx} style={{ display: "flex", alignItems: "center", marginBottom: "6px", marginLeft: 16 }}>
+                                <input
+                                    type="checkbox"
+                                    checked={!!selectedParagraphs[`${i}-${pIdx}`]}
+                                    onChange={() => {
+                                        setSelectedParagraphs(prev => ({
+                                            ...prev,
+                                            [`${i}-${pIdx}`]: !prev[`${i}-${pIdx}`]
+                                        }));
+                                    }}
+                                    style={{ marginRight: 8 }}
+                                />
+                                <span style={{ flex: 1, fontSize: "0.97em", color: "#444" }}>
+                                    <strong>Paragraph {paragraph.paragraphNumber}:</strong> {paragraph.content}
+                                </span>
+                            </div>
+                        ))}
                     </div>
-                </div>
-            ))
+                ))
                 : <div className={styles.item}>No document sections found.</div>
             }
         </div>
@@ -957,6 +1285,15 @@ const handleDownloadWord = async () => {
                 : <div className={styles.item}>No questions found in the document.</div>
             }
         </div>
+        {/* Move the button here */}
+        <button
+            className={styles.copyBtn}
+            style={{ marginTop: 24, width: "100%" }}
+            disabled={sending || (selectedHeaderSections.length === 0 && selectedQuestions.length === 0)}
+            onClick={handleSendSelectedToChatbot}
+        >
+            {sending ? "Sending..." : "Send Selected to Chatbot"}
+        </button>
     </div>
 </div>
 
@@ -1009,7 +1346,7 @@ const handleDownloadWord = async () => {
         ))}
         {currentlyProcessing !== null && (
             <div style={{ marginTop: 12, color: "#888", textAlign: "center" }}>
-                Processing question {currentlyProcessing + 1} of {selectedQuestions.length}...
+                Processing item {currentlyProcessing + 1} of {Object.values(selectedParagraphs).filter(Boolean).length + selectedQuestions.length}...
             </div>
         )}
     </div>

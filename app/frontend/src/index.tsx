@@ -36,6 +36,15 @@ const router = createHashRouter([
                 }
             },
             {
+                path: "score",
+                lazy: async () => {
+                    const module = await import("./pages/score/score");
+                    // Replace 'ScoreComponent' with the actual exported component name if different
+                    return { element: <module.Score /> };
+                }
+
+            },
+            {
                 path: "*",
                 lazy: () => import("./pages/NoPage")
             }

@@ -1,9 +1,10 @@
 {
-    "pageTitle": "S2 Analytical Solutions Chatbot",
-    "headerTitle": "S2 Analytical Solutions Chatbot",
+    "pageTitle": "S2 Analytical Solutions ",
+    "headerTitle": "S2 Analytical Solutions",
     "chat": "Chat",
     "qa": "Ask a question",
     "rfp": "RFP",
+    "score": "Score",
     "login": "Login",
     "logout": "Logout",
     "clearChat": "Clear chat",
@@ -35,7 +36,7 @@
     },
     "developerSettings": "Developer settings",
 
-    "chatEmptyStateTitle": "Chat with your data",
+    "chatEmptyStateTitle": "S2 Analytical Solutions Chatbot",
     "chatEmptyStateSubtitle": "Ask anything or try an example",
     "defaultExamples": {
         "1": "What is included in my Northwind Health Plus plan that is not in standard?",
@@ -43,7 +44,7 @@
         "3": "What does a Product Manager do?",
         "placeholder": "Type a new question (e.g. does my plan cover annual eye exams?)"
     },
-    "askTitle": "Ask your data",
+    "askTitle": "Select Program and Task Order",
     "gpt4vExamples": {
         "1": "Compare the impact of interest rates and GDP in financial markets.",
         "2": "What is the expected trend for the S&P 500 index over the next five years? Compare it to the past S&P 500 performance",
@@ -133,7 +134,8 @@
         },
         "useOidSecurityFilter": "Use oid security filter",
         "useGroupsSecurityFilter": "Use groups security filter",
-        "shouldStream": "Stream chat completion responses"
+        "shouldStream": "Stream chat completion responses",
+        "searchIndex": "Azure Search Index"
     },
 
     "helpTexts": {

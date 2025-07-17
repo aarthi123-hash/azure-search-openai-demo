@@ -213,6 +213,9 @@ const Chat = () => {
                 { content: a[1].message.content, role: "assistant" }
             ]);
 
+            // --- Add this debug log ---
+            console.log("Sending search_index to backend:", selectedIndex);
+
             const request: ChatAppRequest = {
                 messages: [...messages, { content: question, role: "user" }],
                 context: {
@@ -420,14 +423,17 @@ const Chat = () => {
 
     // Fetch available indexes on component mount
     useEffect(() => {
-        fetch("/api/search-indexes")
+        console.log("Attempting to fetch /api/search_indexes");
+        fetch("/api/search_indexes")
             .then(res => res.json())
             .then(data => {
+                console.log("Fetched indexes:", data);
                 if (data.indexes && Array.isArray(data.indexes)) {
                     setIndexes(data.indexes.map((idx: string) => ({ key: idx, text: idx })));
                     setSelectedIndex(data.indexes[0] || "");
                 }
-            });
+            })
+            .catch(err => console.error("Error fetching indexes:", err));
     }, []);
 
     // Example: List of available indexes

@@ -265,10 +265,10 @@ class SearchManager:
                     name=self.search_info.index_name,
                     fields=fields,
                     semantic_search=SemanticSearch(
-                        default_configuration_name="rag-1751458760568-semantic-configuration",
+                        default_configuration_name="synmontyrag-1752075318880-semantic-configuration",
                         configurations=[
                             SemanticConfiguration(
-                                name="rag-1751458760568-semantic-configuration",
+                                name="synmontyrag-1752075318880-semantic-configuration",
                                 prioritized_fields=SemanticPrioritizedFields(
                                     title_field=SemanticField(field_name="title"),
                                     content_fields=[SemanticField(field_name="chunk")],
