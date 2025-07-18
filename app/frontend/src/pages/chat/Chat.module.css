@@ -1,3 +1,24 @@
+/* ======== Download Buttons (PDF/Word) ======== */
+.downloadButton {
+  display: flex;
+  align-items: center;
+  gap: 0.375em;
+  cursor: pointer;
+  padding: 0.5rem 1.25rem !important;
+  background-color: #f3f4f6 !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 6px !important;
+  font-weight: bold !important;
+  color: #1f2937 !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.downloadButton:hover {
+  background-color: #e5e7eb !important;
+  transform: translateY(-1px);
+}
 /* ======== Container Layout ======== */
 .container {
   flex: 1;
@@ -136,12 +157,18 @@
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 0.75rem;
+  gap: 1.25rem;
   padding: 0 1rem;
 }
 
 .commandButton {
-  margin-bottom: 1.25rem;
+  padding: 0.5rem 1.25rem;
+  font-weight: 600;
+  background-color: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
   padding: 0.5rem 1.25rem;
   font-weight: 600;
   background-color: #f3f4f6;

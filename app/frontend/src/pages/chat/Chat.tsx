@@ -6,6 +6,11 @@ import readNDJSONStream from "ndjson-readablestream";
 import { ChevronDown, Database, Search } from 'lucide-react';
 
 import appLogo from "../../assets/applogo.svg";
+import { ArrowDownloadRegular, DocumentRegular } from "@fluentui/react-icons";
+import { Button } from "@fluentui/react-components";
+// Add imports for PDF and Word generation
+import jsPDF from "jspdf";
+import { Document, Packer, Paragraph, TextRun } from "docx";
 import s2pic from "../../assets/s2pic.png";
 import styles from "./Chat.module.css";
 
@@ -470,6 +475,89 @@ const Chat = () => {
                     <ClearChatButton className={styles.commandButton} onClick={clearChat} disabled={!lastQuestionRef.current || isLoading} />
                     {showUserUpload && <UploadFile className={styles.commandButton} disabled={!loggedIn} />}
                     <SettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
+                    <Button
+                        icon={<ArrowDownloadRegular />}
+                        className={styles.downloadButton}
+                        onClick={() => {
+                            // Download as PDF with date, time, and user
+                            const doc = new jsPDF();
+                            let y = 10;
+                            const now = new Date();
+                            const dateStr = now.toLocaleDateString();
+                            const timeStr = now.toLocaleTimeString();
+                            let userName = "User";
+                            if (loggedIn && typeof loggedIn === "object") {
+                                if ('name' in loggedIn && typeof (loggedIn as any).name === 'string') {
+                                    userName = (loggedIn as any).name;
+                                }
+                            }
+                            doc.setFontSize(16);
+                            doc.text("Conversation History", 10, y);
+                            y += 10;
+                            doc.setFontSize(12);
+                            doc.text(`Date: ${dateStr}    Time: ${timeStr}    User: ${userName}`, 10, y);
+                            y += 10;
+                            if (answers.length === 0) {
+                                doc.text("No conversation yet.", 10, y);
+                            } else {
+                                answers.forEach(([user, response], idx) => {
+                                    doc.text(`Q${idx + 1}: ${user}`, 10, y);
+                                    y += 8;
+                                    doc.text(`A${idx + 1}: ${response.message.content}`, 10, y);
+                                    y += 12;
+                                });
+                            }
+                            doc.save("conversation.pdf");
+                        }}
+                        title="Download as PDF"
+                    >
+                        PDF
+                    </Button>
+                    <Button
+                        icon={<DocumentRegular />}
+                        className={styles.downloadButton}
+                        onClick={async () => {
+                            // Download as Word (docx) with date, time, and user
+                            const now = new Date();
+                            const dateStr = now.toLocaleDateString();
+                            const timeStr = now.toLocaleTimeString();
+                            let userName = "User";
+                            if (loggedIn && typeof loggedIn === "object") {
+                                if ('name' in loggedIn && typeof (loggedIn as any).name === 'string') {
+                                    userName = (loggedIn as any).name;
+                                }
+                            }
+                            const paragraphs = [];
+                            paragraphs.push(new Paragraph({ children: [new TextRun({ text: "Conversation History", bold: true, size: 32 })] }));
+                            paragraphs.push(new Paragraph({}));
+                            paragraphs.push(new Paragraph({ children: [new TextRun({ text: `Date: ${dateStr}    Time: ${timeStr}    User: ${userName}`, italics: true, size: 24 })] }));
+                            paragraphs.push(new Paragraph({}));
+                            if (answers.length === 0) {
+                                paragraphs.push(new Paragraph({ children: [new TextRun("No conversation yet.")] }));
+                            } else {
+                                answers.forEach(([user, response], idx) => {
+                                    paragraphs.push(new Paragraph({ children: [new TextRun({ text: `Q${idx + 1}: ${user}`, bold: true })] }));
+                                    paragraphs.push(new Paragraph({ children: [new TextRun({ text: `A${idx + 1}: ${response.message.content}` })] }));
+                                    paragraphs.push(new Paragraph({}));
+                                });
+                            }
+                            const doc = new Document({ sections: [{ properties: {}, children: paragraphs }] });
+                            const blob = await Packer.toBlob(doc);
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = "conversation.docx";
+                            document.body.appendChild(a);
+                            a.click();
+                            setTimeout(() => {
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                            }, 100);
+                        }}
+                        title="Download as Word document"
+                    >
+                        Word
+                    </Button>
                 </div>
             </div>
             <div className={styles.chatRoot} style={{ marginLeft: isHistoryPanelOpen ? "300px" : "0" }}>

@@ -45,6 +45,14 @@ const router = createHashRouter([
 
             },
             {
+                path: "help",
+                lazy: async () => {
+                    const module = await import("./pages/help/help");
+                    return { element: <module.default /> };
+                }
+
+            },
+            {
                 path: "*",
                 lazy: () => import("./pages/NoPage")
             }

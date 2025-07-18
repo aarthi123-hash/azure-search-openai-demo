@@ -522,6 +522,18 @@ export function Component(): JSX.Element {
     const [dynamicFilterConfig, setDynamicFilterConfig] = useState<FilterConfig | null>(null);
     const currentConfig = dynamicFilterConfig ?? filterConfig;
 
+    // Load config from localStorage on mount
+    useEffect(() => {
+        const savedConfig = localStorage.getItem("defaultFilterConfig");
+        if (savedConfig) {
+            try {
+                setDynamicFilterConfig(JSON.parse(savedConfig));
+            } catch {
+                // Ignore parse errors
+            }
+        }
+    }, []);
+
     // Handle config upload
     const handleConfigUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -535,18 +547,32 @@ export function Component(): JSX.Element {
         } else if (file.name.endsWith(".docx")) {
             const arrayBuffer = await file.arrayBuffer();
             const result = await mammoth.extractRawText({ arrayBuffer });
-            try {
-                configObj = JSON.parse(result.value);
-            } catch {
-                alert("Could not parse config from Word doc. Please ensure it contains valid JSON.");
-                return;
+            // New parsing logic: each line is either a program or '- taskOrder' under the previous program
+            const lines = result.value.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+            const programs: Record<string, { label: string; taskOrders?: string[] }> = {};
+            let currentProgram: string | null = null;
+            for (const line of lines) {
+                if (line.startsWith('-')) {
+                    // Task order line
+                    if (currentProgram) {
+                        const taskOrder = line.replace(/^-\s*/, '');
+                        if (!programs[currentProgram].taskOrders) programs[currentProgram].taskOrders = [];
+                        programs[currentProgram].taskOrders!.push(taskOrder);
+                    }
+                } else {
+                    // Program line
+                    currentProgram = line;
+                    programs[currentProgram] = { label: currentProgram };
+                }
             }
+            configObj = { programs };
         } else {
             alert("Unsupported file type.");
             return;
         }
 
         setDynamicFilterConfig(configObj);
+        localStorage.setItem("defaultFilterConfig", JSON.stringify(configObj)); // Save as new default
     };
 
     // If no dynamic config, show upload prompt
@@ -789,13 +815,7 @@ export function Component(): JSX.Element {
                             style={{ marginLeft: 8 }}
                         />
                     </label>
-                    {dynamicFilterConfig && (
-                        <DefaultButton
-                            text="Reset to Default"
-                            onClick={() => setDynamicFilterConfig(null)}
-                            style={{ marginLeft: 16 }}
-                        />
-                    )}
+                    {/* Removed 'Reset to Default' button as requested */}
                     {dynamicFilterConfig && (
                         <div style={{ color: "#0078d4", marginTop: 8 }}>
                             Custom filter config loaded.

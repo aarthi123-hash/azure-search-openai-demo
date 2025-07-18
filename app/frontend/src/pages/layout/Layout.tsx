@@ -145,6 +145,15 @@ const Layout = () => {
                                     {t("score")}
                                 </NavLink>
                             </li>
+                            <li>
+                                <NavLink
+                                    to="/help"
+                                    className={({ isActive }) => (isActive ? styles.headerNavPageLinkActive : styles.headerNavPageLink)}
+                                    onClick={() => setMenuOpen(false)}
+                                >
+                                    {t("help")}
+                                </NavLink>
+                            </li>
                         </ul>
                     </nav>
                     <div className={styles.loginMenuContainer}>
