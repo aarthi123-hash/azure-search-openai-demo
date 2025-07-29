@@ -7,6 +7,7 @@ import { useMsal } from "@azure/msal-react"; // Add this import if using MSAL
 import { useLogin } from "../../authConfig";
 import { LoginButton } from "../../components/LoginButton";
 import { IconButton } from "@fluentui/react";
+import gaiaImg from "./gaia.png";
 
 const Layout = () => {
     const { t } = useTranslation();
@@ -105,7 +106,14 @@ const Layout = () => {
                     </div>
                     
                     <Link to="/" className={styles.headerTitleContainer}>
-                        <h3 className={styles.headerTitle}>{t("headerTitle")}</h3>
+                        <div className={styles.chatbotAvatarContainer}>
+                            <img
+                                src={gaiaImg}
+                                alt="GAIA Chatbot"
+                                className={styles.gaiaAvatar}
+                            />
+                        </div>
+                        <span className={styles.headerTitle}>GAIA</span>
                     </Link>
                     <nav>
                         <ul className={`${styles.headerNavList} ${menuOpen ? styles.show : ""}`}>
@@ -167,42 +175,6 @@ const Layout = () => {
                     </div>
                 </div>
             </header>
-            {/* Token Usage Bar */}
-            <div className={styles.tokenBarContainer}>
-                <div className={styles.tokenBarLabel}>
-                    Tokens Left:
-                    <span
-                        className={
-                            tokenUsage < 50
-                                ? styles.tokenLow
-                                : tokenUsage < 80
-                                ? styles.tokenMedium
-                                : styles.tokenHigh
-                        }
-                        style={{ marginLeft: 8 }}
-                    >
-                        {tokenUsage < 50
-                            ? "High"
-                            : tokenUsage < 80
-                            ? "Medium"
-                            : "Low"}
-                    </span>
-                </div>
-                <div className={styles.tokenBarOuter}>
-                    <div
-                        className={styles.tokenBarInner}
-                        style={{
-                            width: `${100 - tokenUsage}%`,
-                            background:
-                                tokenUsage < 50
-                                    ? "#22c55e"
-                                    : tokenUsage < 80
-                                    ? "#facc15"
-                                    : "#ef4444"
-                        }}
-                    />
-                </div>
-            </div>
             <Outlet />
         </div>
     );

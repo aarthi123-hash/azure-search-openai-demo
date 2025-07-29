@@ -48,7 +48,7 @@
 }
 
 .askAnswerContainer {
-    max-width: 50rem;
+    max-width: 100rem; /* Increased from 50rem to match .askQuestionInput */
     width: 100%;
     padding: 1rem;
     background-color: white;
@@ -113,6 +113,20 @@
 .commandButton:hover {
     background-color: #e5e7eb;
     transform: translateY(-1px);
+}
+
+.indexDropdown {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: 1px solid #d1d5db;
+    font-size: 1rem;
+    background: #fff;
+    min-width: 180px;
+    margin-left: 8px;
+}
+.indexEmpty {
+    color: #888;
+    margin-left: 8px;
 }
 
 @media (min-width: 992px) {

@@ -447,17 +447,7 @@ const Chat = () => {
             .catch(err => console.error("Error fetching indexes:", err));
     }, []);
 
-    // Example: List of available indexes
-    const indexOptions = [
-        { key: "default-index", text: "Default Index" },
-        { key: "contracts-index", text: "Contracts" },
-        { key: "rfp-index", text: "RFPs" }
-    ];
-
-    // Handler for dropdown change
-    const handleIndexChange = (event: React.FormEvent<HTMLDivElement>, option?: any) => {
-        if (option) setSelectedIndex(option.key);
-    };
+  
 
     return (
         <div className={styles.container}>
@@ -563,29 +553,27 @@ const Chat = () => {
             <div className={styles.chatRoot} style={{ marginLeft: isHistoryPanelOpen ? "300px" : "0" }}>
                 <div className={styles.chatContainer}>
                     {/* Improved Index dropdown UI */}
-                    <div style={{ marginBottom: 24, maxWidth: 340, display: "flex", alignItems: "center", gap: 12, background: "#f7f7fa", borderRadius: 8, padding: "12px 16px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-                        <Database size={20} style={{ marginRight: 8, color: "#6c63ff" }} />
-                        <label style={{ fontWeight: "bold", marginRight: 8, minWidth: 90 }}>Select Index:</label>
+                    <div className={styles.indexCard}>
+                        <Database size={20} style={{ marginRight: 12, color: "#6c63ff" }} />
+                        <label className={styles.indexLabel}>Select Index:</label>
                         {indexes.length > 0 ? (
                             <select
                                 value={selectedIndex}
                                 onChange={e => setSelectedIndex(e.target.value)}
-                                style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 15, background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}
+                                className={styles.indexDropdown}
                             >
                                 {indexes.map(opt => (
-                                    <option key={opt.key} value={opt.key} style={{ padding: "8px 12px" }}>{opt.text}</option>
+                                    <option key={opt.key} value={opt.key}>{opt.text}</option>
                                 ))}
                             </select>
                         ) : (
-                            <span style={{ color: '#888', marginLeft: 8 }}>No indexes found</span>
+                            <span className={styles.indexEmpty}>No indexes found</span>
                         )}
                     </div>
                     {/* Chat content and input */}
                     {!lastQuestionRef.current ? (
                         <div className={styles.chatEmptyState}>
-                            <img src={s2pic} alt="App logo" width="120" height="120" />
                             <h1 className={styles.chatEmptyStateTitle}>{t("chatEmptyStateTitle")}</h1>
-                            <h2 className={styles.chatEmptyStateSubtitle}>{t("chatEmptyStateSubtitle")}</h2>
                             {showLanguagePicker && <LanguagePicker onLanguageChange={newLang => i18n.changeLanguage(newLang)} />}
                             <ExampleList onExampleClicked={onExampleClicked} useGPT4V={useGPT4V} />
                         </div>
@@ -664,6 +652,11 @@ const Chat = () => {
                             onSend={handleSend}
                             showSpeechInput={showSpeechInput}
                         />
+                    </div>
+                    {/* Add citation footer with logo */}
+                    <div className={styles.chatFooter}>
+                        <span>Copyright ©2025 S2 Analytical Solutions, LLC. All Rights Reserved</span>
+                        <img src={s2pic} alt="S2 Logo" style={{ height: 32, marginLeft: 12 }} />
                     </div>
                 </div>
 

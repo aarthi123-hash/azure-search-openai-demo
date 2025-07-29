@@ -36,16 +36,17 @@
 }
 
 .chatContainer {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   width: 100%;
-  max-height: calc(100vh - 10rem);
-  background-color: #ffffff;
+  max-width: 1200px;
+  background-color: #f9fafb;
   border-radius: 0.75rem;
-  padding: 1rem;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  padding: 2.5rem 2rem 2rem 2rem;
+  margin: 2.5rem auto;
+  min-height: 60vh;
 }
 
 /* ======== Empty State ======== */
@@ -91,26 +92,28 @@
 .chatMessageGpt,
 .chatMessageGptMinWidth {
   max-width: 100%;
+  min-width: 0;
+  width: 100%;         /* Make the answer/stream take full width */
   display: flex;
   margin-bottom: 1.25rem;
 }
 
 .chatMessageGptMinWidth {
-  max-width: 31.25rem;
+  max-width: 100%;     /* Remove the 31.25rem limit */
 }
 
 /* ======== Chat Input Area ======== */
 .chatInput {
-  position: sticky;
-  bottom: 0;
-  flex-shrink: 0;
   padding: 1rem;
   width: 100%;
-  max-width: 64.25rem;
-  background: #f9fafb;
-  border-top: 1px solid #e5e7eb;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
-  border-radius: 0.75rem 0.75rem 0 0;
+  max-width: 64rem;         /* Same as .askQuestionInput */
+  font-size: 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  background-color: white;
+  margin: 0 auto;           /* Center horizontally */
+  box-sizing: border-box;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04); /* Optional: subtle shadow like Ask */
 }
 
 /* ======== Side Panel (Analysis or Tools) ======== */
@@ -181,6 +184,75 @@
 .commandButton:hover {
   background-color: #e5e7eb;
   transform: translateY(-1px);
+}
+
+/* ======== Index Card ======== */
+.indexCard {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: #f7fafd;
+  border: 1.5px solid #d1d5db;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  padding: 18px 24px;
+  margin-bottom: 2rem;
+  max-width: 420px;
+  width: 100%;
+  transition: box-shadow 0.2s;
+}
+
+.indexCard:hover {
+  box-shadow: 0 4px 16px rgba(108,99,255,0.10);
+  border-color: #6c63ff;
+}
+
+.indexLabel {
+  font-weight: 600;
+  font-size: 1.08rem;
+  color: #23272f;
+  min-width: 110px;
+  white-space: nowrap;
+}
+
+.indexDropdown {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #bfc5d2;
+  font-size: 1rem;
+  background: #fff;
+  transition: border 0.2s;
+  box-sizing: border-box;
+}
+
+.indexDropdown:focus {
+  border: 1.5px solid #6c63ff;
+  outline: none;
+}
+
+.indexEmpty {
+  color: #888;
+  margin-left: 8px;
+}
+
+/* ======== Footer ======== */
+.chatFooter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 2.5rem auto 0 auto;
+  padding: 1.25rem 2rem;
+  background: #fff;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  font-size: 1rem;
+  color: #444;
+  max-width: 480px;
 }
 
 /* ======== Desktop Enhancements ======== */

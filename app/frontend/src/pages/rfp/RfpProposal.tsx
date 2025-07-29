@@ -1187,7 +1187,7 @@ const handleDownloadWord = async () => {
     return (
         <div className={styles.container}>
             <div className={styles.header}>
-                <h1>📄 RFP Processor</h1>
+                <h1>📄 RFI Processor</h1>
                 <p>Extract titles, complete sections with paragraph numbering, and questions from Word documents</p>
             </div>
             

@@ -1,10 +1,11 @@
 {
     "pageTitle": "S2 Analytical Solutions ",
     "headerTitle": "S2 Analytical Solutions",
-    "chat": "Chat",
-    "qa": "Ask a question",
-    "rfp": "RFP",
-    "score": "Score",
+    "chat": "Basic Query",
+    "program": "Query Contract 1",
+    "qa": "Query Contract",
+    "rfp": "File Based Query",
+    "score": "Relevance Score",
     "help": "Help",
     "login": "Login",
     "logout": "Logout",
@@ -37,21 +38,12 @@
     },
     "developerSettings": "Developer settings",
 
-    "chatEmptyStateTitle": "S2 Analytical Solutions Chatbot",
+    "chatEmptyStateTitle": "Ask a Question",
     "chatEmptyStateSubtitle": "Ask anything or try an example",
     "defaultExamples": {
-        "1": "What is included in my Northwind Health Plus plan that is not in standard?",
-        "2": "What happens in a performance review?",
-        "3": "What does a Product Manager do?",
-        "placeholder": "Type a new question (e.g. does my plan cover annual eye exams?)"
+        "placeholder": "Type a new question (e.g. topic?)"
     },
     "askTitle": "Select Program and Task Order",
-    "gpt4vExamples": {
-        "1": "Compare the impact of interest rates and GDP in financial markets.",
-        "2": "What is the expected trend for the S&P 500 index over the next five years? Compare it to the past S&P 500 performance",
-        "3": "Can you identify any correlation between oil prices and stock market trends?",
-        "placeholder": "Example: Does my plan cover annual eye exams?"
-    },
     "generatingAnswer": "Generating answer",
     "citationWithColon": "Citation:",
     "followupQuestions": "Follow-up questions:",

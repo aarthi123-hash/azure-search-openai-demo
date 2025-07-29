@@ -213,6 +213,11 @@ class SearchManager:
                         retrievable=True,
                         searchable=True,
                     ),
+                    # Add new fields for program relevance
+                    SimpleField(name="Program", type="Edm.String", filterable=True, facetable=True, searchable=True),
+                    SimpleField(name="AgencyComponent", type="Edm.String", filterable=True, facetable=True, searchable=True),
+                    SimpleField(name="SourceType", type="Edm.String", filterable=True, facetable=True, searchable=True),
+                    SimpleField(name="Description", type="Edm.String", filterable=True, facetable=True, searchable=True),
                 ]
                 if self.use_acls:
                     fields.append(
@@ -272,7 +277,13 @@ class SearchManager:
                                 name=semantic_config_name,
                                 prioritized_fields=SemanticPrioritizedFields(
                                     title_field=SemanticField(field_name="title"),
-                                    content_fields=[SemanticField(field_name="chunk")],
+                                    content_fields=[
+                                        SemanticField(field_name="chunk"),
+                                        SemanticField(field_name="Program"),
+                                        SemanticField(field_name="AgencyComponent"),
+                                        SemanticField(field_name="SourceType"),
+                                        SemanticField(field_name="Description"),
+                                    ],
                                 ),
                             )
                         ],
@@ -502,3 +513,19 @@ class SearchManager:
                 logger.info("Removed %d sections from index", len(removed_docs))
                 # It can take a few seconds for search results to reflect changes, so wait a bit
                 await asyncio.sleep(2)
+
+    async def search_programs(self, program: str):
+        logger.info("Searching for program: %s", program)
+        async with self.search_info.create_search_client() as search_client:
+            max_results = 1000
+            filter_str = None
+            if program:
+                filter_str = f"Program eq '{program}'"
+            result = await search_client.search(
+                search_text="",
+                filter=filter_str,
+                top=max_results,
+                include_total_count=True
+            )
+            # Only documents with Program == program will be returned
+            # ...rest of your code...
