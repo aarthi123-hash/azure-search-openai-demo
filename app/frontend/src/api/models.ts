@@ -39,7 +39,7 @@ export type ChatAppRequestOverrides = {
     use_groups_security_filter?: boolean;
     use_gpt4v?: boolean;
     gpt4v_input?: GPT4VInput;
-    vector_fields: VectorFields;
+    vector_fields?: any;
     language: string;
     use_agentic_retrieval: boolean;
     program_filter?: string;

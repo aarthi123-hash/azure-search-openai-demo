@@ -58,6 +58,44 @@
   transform: translateY(-2px);
 }
 
+/* ====== Index Dropdown ====== */
+.indexDropdownSection {
+  background: #f8f9fa;
+  border: 2px dashed #dee2e6;
+  border-radius: 15px;
+  padding: 30px;
+  margin-bottom: 30px;
+  text-align: center;
+  transition: background 0.3s ease;
+}
+
+.indexDropdownSection:hover {
+  background: #eef1f3;
+}
+
+.indexDropdown {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #ffffff;
+  padding: 15px 30px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 10px;
+  transition: background 0.3s ease, transform 0.2s ease;
+  appearance: none;
+}
+
+.indexDropdown:focus {
+  outline: 2px solid #764ba2;
+}
+
+.indexDropdown option {
+  color: #333;
+  background: #fff;
+}
+
 /* ====== Processing Spinner ====== */
 .processing {
   text-align: center;

@@ -17,10 +17,14 @@ import {
     Icon
 } from "@fluentui/react";
 import mammoth from "mammoth"; // If you want to support .docx parsing
+import { Database } from "react-feather";
+import { Document, Packer, Paragraph, TextRun } from "docx";
+import { saveAs } from "file-saver";
 
 import styles from "./Ask.module.css";
 
 import { askApi, configApi, uploadFileApi, ChatAppResponse, ChatAppRequest, RetrievalMode, VectorFields, GPT4VInput, SpeechConfig } from "../../api";
+import { chatApi } from "../../api";
 import { Answer, AnswerError } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
 import { ExampleList } from "../../components/Example";
@@ -145,6 +149,7 @@ const filterStyles = {
 
 const stackTokens: IStackTokens = { childrenGap: 20 };
 
+
 interface ActiveFilters {
     program?: string;
     taskOrder?: string;
@@ -197,6 +202,8 @@ export function Component(): JSX.Element {
     const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
     const [selectedProgram, setSelectedProgram] = useState<string>("");
     const [selectedTaskOrder, setSelectedTaskOrder] = useState<string>("");
+    const [indexes, setIndexes] = useState<{ key: string; text: string }[]>([]);
+    const [selectedIndex, setSelectedIndex] = useState<string>("");
 
     const lastQuestionRef = useRef<string>("");
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -248,6 +255,20 @@ export function Component(): JSX.Element {
 
     useEffect(() => {
         getConfig();
+    }, []);
+
+    // Fetch indexes for the dropdown
+    useEffect(() => {
+        fetch("/api/search-indexes")
+            .then(res => res.json())
+            .then(data => {
+                if (data.indexes && Array.isArray(data.indexes)) {
+                    const opts = data.indexes.map((idx: string) => ({ key: idx, text: idx }));
+                    setIndexes(opts);
+                    setSelectedIndex(opts[0]?.key || "");
+                }
+            })
+            .catch(err => console.error("Error fetching indexes:", err));
     }, []);
 
     // Handle program dropdown change
@@ -332,7 +353,7 @@ export function Component(): JSX.Element {
     const makeApiRequest = async (question: string) => {
         const filterQuery = buildFilterQuery();
         const fullQuery = filterQuery ? `${filterQuery} ${question}` : question;
-        
+
         lastQuestionRef.current = fullQuery;
 
         error && setError(undefined);
@@ -343,52 +364,28 @@ export function Component(): JSX.Element {
         const token = client ? await getToken(client) : undefined;
 
         try {
-            const request: ChatAppRequest = {
-                messages: [
-                    {
-                        content: fullQuery,
-                        role: "user"
-                    }
-                ],
+            // Use chatApi instead of askApi
+            const response = await chatApi({
+                messages: [{ content: fullQuery, role: "user" }],
+                session_state: {},
                 context: {
                     overrides: {
-                        prompt_template: promptTemplate.length === 0 ? undefined : promptTemplate,
-                        prompt_template_prefix: promptTemplatePrefix.length === 0 ? undefined : promptTemplatePrefix,
-                        prompt_template_suffix: promptTemplateSuffix.length === 0 ? undefined : promptTemplateSuffix,
-                        include_category: includeCategory.length === 0 ? undefined : includeCategory,
-                        exclude_category: excludeCategory.length === 0 ? undefined : excludeCategory,
-                        top: retrieveCount,
-                        max_subqueries: maxSubqueryCount,
-                        results_merge_strategy: resultsMergeStrategy,
-                        temperature: temperature,
-                        minimum_reranker_score: minimumRerankerScore,
-                        minimum_search_score: minimumSearchScore,
-                        retrieval_mode: retrievalMode,
-                        semantic_ranker: useSemanticRanker,
-                        semantic_captions: useSemanticCaptions,
-                        query_rewriting: useQueryRewriting,
-                        reasoning_effort: reasoningEffort,
-                        use_oid_security_filter: useOidSecurityFilter,
-                        use_groups_security_filter: useGroupsSecurityFilter,
-                        vector_fields: vectorFields,
-                        use_gpt4v: useGPT4V,
-                        gpt4v_input: gpt4vInput,
+                        search_index: selectedIndex,
+                        vector_fields: "", // or [] if your backend expects an array
                         language: i18n.language,
                         use_agentic_retrieval: useAgenticRetrieval,
                         program_filter: activeFilters.program ?? "",
-                        task_order_filter: activeFilters.taskOrder ?? "",
-                        ...(seed !== null ? { seed: seed } : {})
+                        task_order_filter: activeFilters.taskOrder ?? ""
                     }
-                },
-                session_state: answer ? answer.session_state : null
-            };
-            const result = await askApi(request, token);
-            
-            // After you get the answer from the API:
+                }
+            }, false, token);
+
+            const data = await response.json(); // Parse the response body
+
             const filterSummary = getFilterSummary();
             setAnswer({
-                ...result,
-                filterSummary // add this property
+                ...data,
+                filterSummary
             });
             setSpeechUrls([null]);
         } catch (e) {
@@ -590,6 +587,24 @@ export function Component(): JSX.Element {
                         <SettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
                     </div>
                     <h1 className={styles.askTitle}>{t("askTitle")}</h1>
+                    {/* Index Selection Section */}
+                <div className={styles.indexCard} style={{ marginBottom: 24 }}>
+                    <Database size={20} style={{ marginRight: 12, color: "#6c63ff" }} />
+                    <label className={styles.indexLabel}>Select Index:</label>
+                    {indexes.length > 0 ? (
+                        <select
+                            value={selectedIndex}
+                            onChange={e => setSelectedIndex(e.target.value)}
+                            className={styles.indexDropdown}
+                        >
+                            {indexes.map(opt => (
+                                <option key={opt.key} value={opt.key}>{opt.text}</option>
+                            ))}
+                        </select>
+                    ) : (
+                        <span className={styles.indexEmpty}>No indexes found</span>
+                    )}
+                </div>
 
                     {/* Enhanced Filter Section */}
                     <div style={filterStyles.filterContainer}>
@@ -804,7 +819,52 @@ export function Component(): JSX.Element {
                     />
                 </Panel>
 
-                <div style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 16 }}>
+                    <button
+                        style={{
+                            background: "#222",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "8px 16px",
+                            fontWeight: 500,
+                            cursor: "pointer"
+                        }}
+                        onClick={async () => {
+                            // Get the current config (dynamic or default)
+                            const config = dynamicFilterConfig ?? filterConfig;
+                            const programs = config.programs || {};
+                            let lines: string[] = [];
+                            Object.entries(programs).forEach(([program, val]) => {
+                                lines.push(program);
+                                if (val.taskOrders && Array.isArray(val.taskOrders)) {
+                                    val.taskOrders.forEach((task: string) => {
+                                        lines.push(`- ${task}`);
+                                    });
+                                }
+                            });
+
+                            // Create Word doc
+                            const paragraphs = lines.map(line =>
+                                new Paragraph({
+                                    children: [new TextRun({ text: line, size: 24 })],
+                                    spacing: { after: 100 }
+                                })
+                            );
+
+                            const doc = new Document({
+                                sections: [{
+                                    children: [
+                                        ...paragraphs
+                                    ]
+                                }]
+                            });
+                            const blob = await Packer.toBlob(doc);
+                            saveAs(blob, "current-filter-config.docx");
+                        }}
+                    >
+                        Download Current Filter Config
+                    </button>
                     <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                         <Icon iconName="Upload" style={{ marginRight: 6 }} />
                         <span style={{ fontWeight: 500 }}>Upload Filter Config:</span>
@@ -815,9 +875,8 @@ export function Component(): JSX.Element {
                             style={{ marginLeft: 8 }}
                         />
                     </label>
-                    {/* Removed 'Reset to Default' button as requested */}
                     {dynamicFilterConfig && (
-                        <div style={{ color: "#0078d4", marginTop: 8 }}>
+                        <div style={{ color: "#0078d4", marginLeft: 12 }}>
                             Custom filter config loaded.
                         </div>
                     )}

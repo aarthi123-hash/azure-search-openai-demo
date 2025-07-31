@@ -6,6 +6,65 @@ import autoTable from "jspdf-autotable";
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import { saveAs } from "file-saver";
 
+// Default hierarchical programs and task orders
+const defaultProgramHierarchy: { [program: string]: string[] } = {
+    "NGA NSG/SI": [],
+    "NGA ESMARTS": [
+        "TO01 X4",
+        "TO02 XK",
+        "TO03 Enterprise Operations",
+        "TO04 OCIO CS"
+    ],
+    "NGA RDAS": [
+        "TO04 Innovision",
+        "TO11 International",
+        "TO13 ITEMS",
+        "TO17 Office of GEOINT Management",
+        "TO18 Tactical Data Program Management",
+        "TO21 ITEMS PMO",
+        "TO24 NSG Expeditionary Architecture",
+        "TO26 CAE",
+        "TO27 Online GEOINT Services"
+    ],
+    "NGA SEIN": [],
+    "NGA SEIN-ASI-SB": [],
+    "ODNI CASES": [
+        "TO01 AT/CCT"
+    ],
+    "NGA EMERALD": [
+        "TO02 National Technical Means",
+        "TO06 Source Content Conveyance",
+        "TO08 Research",
+        "TO17 Source",
+        "TO19 N2W",
+        "TO20 Office of Content Solutions",
+        "TO23 GEOINT Services",
+        "TO30 GEOINT Enterprise",
+        "TO31 Open IT Solutions",
+        "TO32 IC Enterprise Management",
+        "TO34 ITEMS and IC ITE",
+        "TO43 OVI",
+        "TO48 IPF"
+    ],
+    "NGA MOJAVE": [
+        "TO02 RFO",
+        "TO04 ATP",
+        "TO12 SI"
+    ],
+    "NGA NSE": [
+        "TO05 IPA"
+    ],
+    "NRO COLOSSUS": [],
+    "NCTC TPI": [],
+    "NGA WSTAMP": [],
+    "NGA RTSS": [],
+    "NGA S3": [],
+    "USA AI/ML Facial Recognition": [],
+    "NRO LANDMARK AOS": [],
+    "NRO ISPO": [],
+    "NGA ARSO": []
+};
+
 // List of programs to score
 const programs = [
     "NGA NSG/SI",
@@ -28,18 +87,43 @@ const programs = [
     "NGA ARSO"
 ];
 
-// Chatbot scoring function that makes actual API calls
-async function getScoreFromChatbot(program: string, topic: string): Promise<{score: number, reason: string}> {
+// --- Update getScoreFromChatbot to support taskOrder ---
+async function getScoreFromChatbot(
+    program: string,
+    topic: string,
+    selectedIndex: string,
+    taskOrder?: string // <-- new param
+): Promise<{ score: number, reason: string }> {
     try {
-        // First, ask the context-setting question
-        const contextPrompt = `Where program = ${program}, rate the relevance to the topic is ${topic}?`;
-        await chatApi({
-            messages: [{ content: contextPrompt, role: "user" }],
-            session_state: {}
-        }, false, undefined);
+        // Build context and scoring prompts based on taskOrder
+        let contextPrompt: string;
+        let scoringPrompt: string;
 
-        // Then, ask the scoring question
-        const scoringPrompt = `Score the relevance of the following program to the given topic:
+        if (taskOrder) {
+            contextPrompt = `Where program = ${program} and taskOrder = ${taskOrder}, rate the relevance to the topic is ${topic}?`;
+            scoringPrompt = `Score the relevance of the following program and task order to the given topic:
+
+Program: "${program}"
+Task Order: "${taskOrder}"
+Topic: "${topic}"
+
+USE this exact structure:
+
+Score: X/5
+Reason: [Detailed explanation]
+
+Use this scoring framework:
+- 0/5: Unrelated or incompatible
+- 1/5: Minimal relevance 
+- 2/5: Limited relevance with some indirect connections
+- 3/5: Moderate relevance 
+- 4/5: High relevance with strong connections and alignment
+- 5/5: Perfect match 
+
+Provide your assessment now.`;
+        } else {
+            contextPrompt = `Where program = ${program}, rate the relevance to the topic is ${topic}?`;
+            scoringPrompt = `Score the relevance of the following program to the given topic:
 
 Program: "${program}"
 Topic: "${topic}"
@@ -58,10 +142,24 @@ Use this scoring framework:
 - 5/5: Perfect match 
 
 Provide your assessment now.`;
+        }
+
+        await chatApi({
+            messages: [{ content: contextPrompt, role: "user" }],
+            session_state: {}
+        }, false, undefined);
 
         const response = await chatApi({
             messages: [{ content: scoringPrompt, role: "user" }],
-            session_state: {}
+            session_state: {},
+            context: {
+                overrides: {
+                    search_index: selectedIndex,
+                    vector_fields: "",
+                    language: "en",
+                    use_agentic_retrieval: false
+                }
+            }
         }, false, undefined);
 
         if (!response.ok) {
@@ -70,12 +168,12 @@ Provide your assessment now.`;
 
         const data = await response.json();
         const answer = data.answer?.content ||
-                       data.answer ||
-                       data.message?.content ||
-                       data.message ||
-                       data.choices?.[0]?.message?.content ||
-                       data.response ||
-                       "";
+            data.answer ||
+            data.message?.content ||
+            data.message ||
+            data.choices?.[0]?.message?.content ||
+            data.response ||
+            "";
 
         // Parse the response to extract score and reason
         const scoreMatches = answer.match(/score[:\s]*([0-5])\/?5?/gi);
@@ -126,12 +224,35 @@ export function Score() {
     const [processing, setProcessing] = useState<boolean>(false);
     const [started, setStarted] = useState<boolean>(false);
     const [customPrograms, setCustomPrograms] = useState<string[] | null>(null);
-    const [selectedPrograms, setSelectedPrograms] = useState<{ [program: string]: boolean }>({});
     const [fullscreenProgram, setFullscreenProgram] = useState<string | null>(null);
-    const [defaultPrograms, setDefaultPrograms] = useState<string[] | null>(null);
+    const [defaultPrograms, setDefaultPrograms] = useState<string[] | null>(() => Object.keys(defaultProgramHierarchy));
     const [userName, setUserName] = useState("User");
+    const [indexes, setIndexes] = useState<string[]>([]);
+    const [selectedIndex, setSelectedIndex] = useState<string>("");
+    const [showIndexSwitcher, setShowIndexSwitcher] = useState(false);
+    const [pendingIndex, setPendingIndex] = useState(selectedIndex);
+    const [hierarchicalPrograms, setHierarchicalPrograms] = useState<{ [program: string]: string[] }>(() => {
+        // On first load, check localStorage, else use default
+        const storedHierarchy = localStorage.getItem("defaultProgramsHierarchy");
+        if (storedHierarchy) {
+            try {
+                const parsed = JSON.parse(storedHierarchy);
+                if (parsed && typeof parsed === "object") return parsed;
+            } catch {}
+        }
+        return defaultProgramHierarchy;
+    });
+    const [selectedPrograms, setSelectedPrograms] = useState<{ [program: string]: boolean }>({});
+    const [selectedTaskOrders, setSelectedTaskOrders] = useState<{ [program: string]: string | null }>({});
+    const [showProgramPopup, setShowProgramPopup] = useState<null | string>(null);
 
-    const programList = defaultPrograms ?? programs;
+    // Helper to get all programs (from hierarchicalPrograms if present, else fallback)
+    const programList = React.useMemo(() => {
+        if (Object.keys(hierarchicalPrograms).length > 0) {
+            return Object.keys(hierarchicalPrograms);
+        }
+        return defaultPrograms ?? programs;
+    }, [hierarchicalPrograms, defaultPrograms]);
 
     // Filter programs based on selectedPrograms (default to true if not set)
     const filteredProgramList = programList.filter(p => selectedPrograms[p] ?? true);
@@ -148,14 +269,43 @@ export function Score() {
         }
     }, []);
 
+    // On mount, always load hierarchy from localStorage if present, else use default
+    useEffect(() => {
+        const storedHierarchy = localStorage.getItem("defaultProgramsHierarchy");
+        if (storedHierarchy) {
+            try {
+                const parsed = JSON.parse(storedHierarchy);
+                if (parsed && typeof parsed === "object") {
+                    setHierarchicalPrograms(parsed);
+                    setDefaultPrograms(Object.keys(parsed));
+                    // Set all programs checked by default
+                    const newSelectedPrograms: { [program: string]: boolean } = {};
+                    Object.keys(parsed).forEach(p => { newSelectedPrograms[p] = true; });
+                    setSelectedPrograms(newSelectedPrograms);
+                    setSelectedTaskOrders({});
+                    return;
+                }
+            } catch {}
+        }
+        // If nothing in storage, use the default
+        setHierarchicalPrograms(defaultProgramHierarchy);
+        setDefaultPrograms(Object.keys(defaultProgramHierarchy));
+        const newSelectedPrograms: { [program: string]: boolean } = {};
+        Object.keys(defaultProgramHierarchy).forEach(p => { newSelectedPrograms[p] = true; });
+        setSelectedPrograms(newSelectedPrograms);
+        setSelectedTaskOrders({});
+    }, []);
+
     useEffect(() => {
         if (started && !processing && currentIdx < filteredProgramList.length) {
             setProcessing(true);
-            getScoreFromChatbot(filteredProgramList[currentIdx], topic)
-                .then(({score, reason}) => {
+            const program = filteredProgramList[currentIdx];
+            const taskOrder = selectedTaskOrders[program] || undefined;
+            getScoreFromChatbot(program, topic, selectedIndex, taskOrder)
+                .then(({ score, reason }) => {
                     setResults(prev => ({
                         ...prev,
-                        [filteredProgramList[currentIdx]]: { score, reason }
+                        [program]: { score, reason }
                     }));
                     setCurrentIdx(idx => idx + 1);
                     setProcessing(false);
@@ -163,18 +313,123 @@ export function Score() {
                 .catch(error => {
                     setResults(prev => ({
                         ...prev,
-                        [filteredProgramList[currentIdx]]: { 
-                            score: 1, 
-                            reason: `Error occurred while scoring: ${error.message}` 
+                        [program]: {
+                            score: 1,
+                            reason: `Error occurred while scoring: ${error.message}`
                         }
                     }));
                     setCurrentIdx(idx => idx + 1);
                     setProcessing(false);
                 });
         }
-    }, [started, currentIdx, processing, topic, filteredProgramList]);
+    }, [started, currentIdx, processing, topic, filteredProgramList, selectedIndex, selectedTaskOrders]);
 
-    // const programList = customPrograms ?? programs; // Removed duplicate declaration
+    useEffect(() => {
+        fetch("/api/search-indexes")
+            .then(res => res.json())
+            .then(data => {
+                if (data.indexes && Array.isArray(data.indexes)) {
+                    setIndexes(data.indexes);
+                    setSelectedIndex(data.indexes[0] || "");
+                }
+            })
+            .catch(err => console.error("Error fetching indexes:", err));
+    }, []);
+
+    // --- UPDATED: handleProgramUpload ---
+    const handleProgramUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const arrayBuffer = await file.arrayBuffer();
+        const mammoth = await import("mammoth");
+        const { value: text } = await mammoth.extractRawText({ arrayBuffer });
+        const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+
+        // Parse hierarchical structure
+        const hierarchy: { [program: string]: string[] } = {};
+        let currentProgram: string | null = null;
+        for (const line of lines) {
+            if (line.startsWith('-')) {
+                if (currentProgram) {
+                    const taskOrder = line.replace(/^-+/, '').trim();
+                    if (taskOrder) {
+                        hierarchy[currentProgram].push(taskOrder);
+                    }
+                }
+            } else {
+                currentProgram = line;
+                hierarchy[currentProgram] = [];
+            }
+        }
+
+        setHierarchicalPrograms(hierarchy);
+        setDefaultPrograms(Object.keys(hierarchy));
+        // Set all programs checked by default
+        const newSelectedPrograms: { [program: string]: boolean } = {};
+        Object.keys(hierarchy).forEach(p => { newSelectedPrograms[p] = true; });
+        setSelectedPrograms(newSelectedPrograms);
+        setSelectedTaskOrders({});
+        // Overwrite the full hierarchy as the new default in localStorage
+        localStorage.setItem("defaultProgramsHierarchy", JSON.stringify(hierarchy));
+    };
+
+    // Always sync selectedPrograms with the current program list
+    useEffect(() => {
+        const allPrograms = Object.keys(hierarchicalPrograms).length > 0
+            ? Object.keys(hierarchicalPrograms)
+            : (defaultPrograms ?? programs);
+
+        setSelectedPrograms(prev => {
+            const updated: { [program: string]: boolean } = {};
+            allPrograms.forEach(p => {
+                updated[p] = prev[p] !== undefined ? prev[p] : true;
+            });
+            return updated;
+        });
+    }, [hierarchicalPrograms, defaultPrograms]);
+
+    useEffect(() => {
+        if (started && !processing && currentIdx < filteredProgramList.length) {
+            setProcessing(true);
+            const program = filteredProgramList[currentIdx];
+            const taskOrder = selectedTaskOrders[program] || undefined;
+            getScoreFromChatbot(program, topic, selectedIndex, taskOrder)
+                .then(({ score, reason }) => {
+                    setResults(prev => ({
+                        ...prev,
+                        [program]: { score, reason }
+                    }));
+                    setCurrentIdx(idx => idx + 1);
+                    setProcessing(false);
+                })
+                .catch(error => {
+                    setResults(prev => ({
+                        ...prev,
+                        [program]: {
+                            score: 1,
+                            reason: `Error occurred while scoring: ${error.message}`
+                        }
+                    }));
+                    setCurrentIdx(idx => idx + 1);
+                    setProcessing(false);
+                });
+        }
+    }, [started, currentIdx, processing, topic, filteredProgramList, selectedIndex, selectedTaskOrders]);
+
+    // --- UPDATED: Checkbox logic for programs and task orders ---
+    // When a program is unchecked, also uncheck its selected task order
+    const handleProgramCheckbox = (program: string, checked: boolean) => {
+        setSelectedPrograms(prev => ({
+            ...prev,
+            [program]: checked
+        }));
+        if (!checked) {
+            setSelectedTaskOrders(prev => ({
+                ...prev,
+                [program]: null
+            }));
+        }
+    };
 
     const handleStart = () => {
         if (topic.trim()) {
@@ -191,30 +446,42 @@ export function Score() {
         setProcessing(false);
     };
 
-    const handleProgramUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const arrayBuffer = await file.arrayBuffer();
-        const mammoth = await import("mammoth");
-        const { value: text } = await mammoth.extractRawText({ arrayBuffer });
-        const names = text.split('\n').map(line => line.trim()).filter(Boolean);
-        if (names.length > 0) {
-            setDefaultPrograms(names);
-            localStorage.setItem("defaultPrograms", JSON.stringify(names)); // <-- Save to localStorage
-        } else {
-            alert("No program names found in the uploaded file.");
-        }
-    };
-
+    // --- Replace handleDownloadDefaultPrograms to export the hierarchical structure --- 
     const handleDownloadDefaultPrograms = async () => {
+        // Export the current default program/task order hierarchy as a .docx in the same format as upload
+        // Example:
+        // NGA NSG/SI
+        // NGA ESMARTS
+        // - TO01 X4
+        // - TO02 XK
+        // ...
+        let lines: string[] = [];
+        const hierarchy = hierarchicalPrograms && Object.keys(hierarchicalPrograms).length > 0
+            ? hierarchicalPrograms
+            : defaultProgramHierarchy;
+
+        Object.entries(hierarchy).forEach(([program, tasks]) => {
+            lines.push(program);
+            tasks.forEach(task => {
+                lines.push(`- ${task}`);
+            });
+        });
+
+        const paragraphs = lines.map(line =>
+            new Paragraph({
+                children: [new TextRun({ text: line, size: 24 })],
+                spacing: { after: 100 }
+            })
+        );
+
         const doc = new Document({
             sections: [{
                 children: [
-                    new Paragraph({
-                        children: [new TextRun({ text: "Default Program List", bold: true, size: 32 })],
-                        spacing: { after: 400 }
-                    }),
-                    ...programs.map(p => new Paragraph({ children: [new TextRun({ text: p, size: 24 })], spacing: { after: 100 } }))
+                    //new Paragraph({
+                    //    children: [new TextRun({ text: "Default Program List", bold: true, size: 32 })],
+                    //    spacing: { after: 400 }
+                    //}),
+                    ...paragraphs
                 ]
             }]
         });
@@ -230,9 +497,6 @@ export function Score() {
         return '#ef4444'; // red
     };
 
-    // Only include selected programs
-    const selectedProgramNames = programList.filter(p => selectedPrograms[p] ?? true);
-
     // PDF export
     const handleExportPDF = () => {
         const doc = new jsPDF();
@@ -245,18 +509,19 @@ export function Score() {
         doc.setFontSize(12);
         doc.text(`User: ${userName}`, 14, 26);
         doc.text(`Date: ${dateStr}    Time: ${timeStr}`, 14, 34);
-        doc.text(`Topic: ${topic}`, 14, 42); // Added topic to PDF
+        doc.text(`Topic: ${topic}`, 14, 42);
 
         autoTable(doc, {
-            startY: 50, // was 42, now after topic
-            head: [["Program", "Score", "Reason"]],
-            body: selectedProgramNames.map(p => [
+            startY: 50,
+            head: [["Program", "Task Order", "Score", "Reason"]],
+            body: filteredProgramList.map(p => [
                 p,
+                selectedTaskOrders[p] || "-",
                 results[p]?.score ?? "-",
                 results[p]?.reason ?? "-"
             ]),
             styles: { fontSize: 10, cellWidth: 'wrap' },
-            columnStyles: { 2: { cellWidth: 100 } }
+            columnStyles: { 3: { cellWidth: 100 } }
         });
         doc.save("program-scores.pdf");
     };
@@ -275,11 +540,14 @@ export function Score() {
             new Paragraph({})
         ];
 
-        selectedProgramNames.forEach(p => {
+        filteredProgramList.forEach(p => {
             paragraphs.push(
                 new Paragraph({
                     children: [
                         new TextRun({ text: p, bold: true, size: 28, color: "be4c29" }),
+                        ...(selectedTaskOrders[p]
+                            ? [new TextRun({ text: `  Task Order: ${selectedTaskOrders[p]}`, bold: true, size: 24, color: "764ba2" })]
+                            : []),
                         new TextRun({ text: `  Score: ${results[p]?.score ?? "-"}/5`, bold: true, size: 24 })
                     ],
                     spacing: { after: 100 }
@@ -341,6 +609,17 @@ export function Score() {
             </div>
 
             <div style={{ display: "flex", gap: 16, marginBottom: 24, alignItems: "center" }}>
+                <button
+                    className={styles.startButton}
+                    type="button"
+                    onClick={() => {
+                        setPendingIndex(selectedIndex);
+                        setShowIndexSwitcher(true);
+                    }}
+                    disabled={started && currentIdx < programList.length}
+                >
+                    Switch Index
+                </button>
                 <label>
                     <input
                         type="file"
@@ -356,12 +635,22 @@ export function Score() {
                         Upload Program List (.docx)
                     </button>
                 </label>
+                <button
+                    className={styles.startButton}
+                    type="button"
+                    onClick={handleDownloadDefaultPrograms}
+                >
+                    Download Current Default List
+                </button>
                 <button className={styles.startButton} type="button" onClick={handleExportPDF}>
                     Print to PDF
                 </button>
                 <button className={styles.startButton} type="button" onClick={handleExportWord}>
                     Print to Word
                 </button>
+            </div>
+            <div style={{ marginBottom: 16, fontWeight: 500, color: "#764ba2" }}>
+                Current Microsoft Index: <span style={{ fontWeight: 700 }}>{selectedIndex}</span>
             </div>
 
             {started && (
@@ -413,42 +702,143 @@ export function Score() {
                 </div>
             )}
 
+            {/* Program selection popup */}
+            {showProgramPopup && (
+                <div style={{
+                    position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh",
+                    background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000
+                }}>
+                    <div style={{
+                        background: "#fff", borderRadius: 12, padding: 32, minWidth: 320, maxWidth: 500, boxShadow: "0 8px 32px rgba(0,0,0,0.15)", textAlign: "center"
+                    }}>
+                        <h3 style={{ marginBottom: 24 }}>{showProgramPopup}</h3>
+                        {(() => {
+                            const program = showProgramPopup;
+                            const taskOrder = selectedTaskOrders[program] || null;
+                            return (
+                                <>
+                                    {taskOrder && (
+                                        <div style={{ fontWeight: 500, color: "#764ba2", marginBottom: 12 }}>
+                                            Task Order: <span style={{ fontWeight: 700 }}>{taskOrder}</span>
+                                        </div>
+                                    )}
+                                    {results[program] ? (
+                                        <>
+                                            <div
+                                                className={styles.chatbotScore}
+                                                style={{ color: getScoreColor(results[program]?.score || 1), marginBottom: 12 }}
+                                            >
+                                                Score: {results[program]?.score}/5
+                                            </div>
+                                            <div className={styles.reasonBox} style={{ marginBottom: 16 }}>
+                                                <span className={styles.reasonLabel}>Reason:</span> {results[program]?.reason}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div style={{ marginBottom: 16, color: "#aaa" }}>No result yet.</div>
+                                    )}
+                                </>
+                            );
+                        })()}
+                        <button
+                            className={styles.startButton}
+                            style={{ background: "#6b7280" }}
+                            onClick={() => setShowProgramPopup(null)}
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <ul className={styles.programList}>
                 {(started ? filteredProgramList : programList).map((program, idx) => {
                     const checked = selectedPrograms[program] ?? true;
+                    const taskOrders = hierarchicalPrograms[program] || [];
+                    const selectedTaskOrder = selectedTaskOrders[program] || null;
+                    const isScoring = started && idx === currentIdx && results[program] == null;
+
                     return (
                         <li
                             className={styles.programItem}
                             key={program}
-                            onClick={() => {
-                                if (started && results[program]) {
-                                    setFullscreenProgram(program);
-                                } else if (!started) {
-                                    setSelectedPrograms(prev => ({
-                                        ...prev,
-                                        [program]: !checked
-                                    }));
+                            style={{ cursor: started && results[program] ? 'pointer' : !started ? 'pointer' : undefined }}
+                            onClick={e => {
+                                // If not started and not clicking on a checkbox, toggle check/uncheck
+                                if (!started && (e.target as HTMLElement).tagName !== "INPUT") {
+                                    handleProgramCheckbox(program, !checked);
+                                }
+                                // If started and scoring is complete, show popup (keep your existing logic)
+                                if (
+                                    started &&
+                                    currentIdx >= filteredProgramList.length &&
+                                    (e.target as HTMLElement).tagName !== "INPUT"
+                                ) {
+                                    setShowProgramPopup(program);
                                 }
                             }}
-                            style={{ cursor: started && results[program] ? 'pointer' : !started ? 'pointer' : undefined }}
                         >
                             {!started && (
                                 <input
                                     type="checkbox"
                                     checked={checked}
-                                    onChange={e => {
-                                        setSelectedPrograms(prev => ({
-                                            ...prev,
-                                            [program]: e.target.checked
-                                        }));
-                                    }}
-                                    style={{ marginRight: 12, pointerEvents: 'none' }}
+                                    onChange={e => handleProgramCheckbox(program, e.target.checked)}
+                                    style={{ marginRight: 12 }}
+                                    onClick={e => e.stopPropagation()}
                                 />
                             )}
                             <span className={styles.programName}>{program}</span>
-                            <div className={styles.resultContent}>
-                                {started ? (
-                                    results[program] != null ? (
+                            {/* Task Orders BELOW the program name */}
+                            {taskOrders.length > 0 && !started && (
+                                <div style={{ marginLeft: 0, marginTop: 8 }}>
+                                    <div style={{ fontWeight: 500, color: "#764ba2", marginBottom: 4 }}>Task Orders:</div>
+                                    <ul style={{ margin: 0, paddingLeft: 20 }}>
+                                        {taskOrders.map((task, tIdx) => (
+                                            <li
+                                                key={task + tIdx}
+                                                style={{ marginBottom: 4, display: "flex", alignItems: "center", cursor: !checked ? "not-allowed" : "pointer" }}
+                                                onClick={e => {
+                                                    if (!checked) return;
+                                                    setSelectedTaskOrders(prev => ({
+                                                        ...prev,
+                                                        [program]: prev[program] === task ? null : task
+                                                    }));
+                                                }}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedTaskOrder === task}
+                                                    disabled={!checked}
+                                                    onChange={() => {
+                                                        setSelectedTaskOrders(prev => ({
+                                                            ...prev,
+                                                            [program]: prev[program] === task ? null : task
+                                                        }));
+                                                    }}
+                                                    style={{ marginRight: 8 }}
+                                                    onClick={e => e.stopPropagation()}
+                                                />
+                                                <span style={{ fontStyle: "italic", color: checked ? undefined : "#aaa" }}>{task}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                            {/* After scoring starts, just show the selected task order (if any) BELOW the program */}
+                            {taskOrders.length > 0 && started && (
+                                <div style={{ marginLeft: 0, marginTop: 8 }}>
+                                    <span style={{ fontWeight: 500, color: "#764ba2" }}>
+                                        Task Order:{" "}
+                                        <span style={{ fontWeight: 700 }}>
+                                            {selectedTaskOrder || <span style={{ color: "#aaa" }}>None selected</span>}
+                                        </span>
+                                    </span>
+                                </div>
+                            )}
+                            {/* Chatbot answer box is always below program and task order */}
+                            {started && (
+                                <div className={styles.resultContent} style={{ marginTop: 12 }}>
+                                    {results[program] != null ? (
                                         <>
                                             <div
                                                 className={styles.chatbotScore}
@@ -461,8 +851,8 @@ export function Score() {
                                             </div>
                                         </>
                                     ) : (
-                                        <span className={`${styles.status} ${started && idx === currentIdx ? styles.statusActive : ''}`}>
-                                            {started && idx === currentIdx ? (
+                                        <span className={`${styles.status} ${isScoring ? styles.statusActive : ''}`}>
+                                            {isScoring ? (
                                                 <span>
                                                     <span className={styles.loadingDot}>●</span> Scoring...
                                                 </span>
@@ -470,9 +860,9 @@ export function Score() {
                                                 "Waiting..."
                                             )}
                                         </span>
-                                    )
-                                ) : null}
-                            </div>
+                                    )}
+                                </div>
+                            )}
                         </li>
                     );
                 })}
@@ -483,6 +873,51 @@ export function Score() {
                     ✅ All programs scored for topic: <strong>"{topic}"</strong>
                 </div>
             )}
+
+            {showIndexSwitcher && (
+    <div style={{
+        position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh",
+        background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000
+    }}>
+        <div style={{
+            background: "#fff", borderRadius: 12, padding: 32, minWidth: 320, boxShadow: "0 8px 32px rgba(0,0,0,0.15)", textAlign: "center"
+        }}>
+            <h3 style={{ marginBottom: 24 }}>Switch Microsoft Index</h3>
+            <select
+                value={pendingIndex}
+                onChange={e => setPendingIndex(e.target.value)}
+                style={{ padding: 10, borderRadius: 8, minWidth: 220, fontSize: 16, marginBottom: 24 }}
+            >
+                {indexes.map(idx => (
+                    <option key={idx} value={idx}>{idx}</option>
+                ))}
+            </select>
+            <div style={{ marginTop: 16 }}>
+                <button
+                    className={styles.startButton}
+                    style={{ marginRight: 12 }}
+                    onClick={() => {
+                        setSelectedIndex(pendingIndex);
+                        setShowIndexSwitcher(false);
+                        setResults({});
+                        setCurrentIdx(0);
+                        setStarted(false);
+                        setProcessing(false);
+                    }}
+                >
+                    Confirm
+                </button>
+                <button
+                    className={styles.startButton}
+                    style={{ background: "#6b7280" }}
+                    onClick={() => setShowIndexSwitcher(false)}
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+)}
         </div>
     );
 }

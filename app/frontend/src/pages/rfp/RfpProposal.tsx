@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import mammoth from "mammoth";
 import { chatApi } from "../../api/api"; // Adjust path as needed
 import styles from "./RfpProposal.module.css"; // Create this CSS file for custom styles
@@ -304,7 +304,21 @@ export const RfpProposal: React.FC = () => {
     const [addingQuestion, setAddingQuestion] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedParagraphs, setSelectedParagraphs] = useState<{ [key: string]: boolean }>({});
+    const [indexes, setIndexes] = useState<string[]>([]);
+    const [selectedIndex, setSelectedIndex] = useState<string>("");
 
+
+    useEffect(() => {
+        fetch("/api/search-indexes")
+            .then(res => res.json())
+            .then(data => {
+                if (data.indexes && Array.isArray(data.indexes)) {
+                    setIndexes(data.indexes);
+                    setSelectedIndex(data.indexes[0] || "");
+                }
+            })
+            .catch(err => console.error("Error fetching indexes:", err));
+    }, []);
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -396,7 +410,8 @@ export const RfpProposal: React.FC = () => {
         try {
             const response = await chatApi({
                 messages: [{ content: message, role: "user" }],
-                session_state: {}
+                session_state: {},
+                context: { overrides: { search_index: selectedIndex, language: "en", use_agentic_retrieval: false } }
             }, false, undefined);
             
             const data = await response.json();
@@ -731,6 +746,7 @@ const handleDownloadWord = async () => {
                 const response = await chatApi({
                     messages: [{ content: context, role: "user" }],
                     session_state: {},
+                    context: { overrides: { search_index: selectedIndex, language: "en", use_agentic_retrieval: false } }
                 }, false, undefined);
                 const data = await response.json();
                 const answer =
@@ -765,6 +781,7 @@ const handleDownloadWord = async () => {
                 const response = await chatApi({
                     messages: [{ content: context, role: "user" }],
                     session_state: {},
+                    context: { overrides: { search_index: selectedIndex, language: "en", use_agentic_retrieval: false } }
                 }, false, undefined);
                 const data = await response.json();
                 const answer =
@@ -848,6 +865,7 @@ const handleDownloadWord = async () => {
                 const response = await chatApi({
                     messages: [{ content: context, role: "user" }],
                     session_state: {},
+                    context: { overrides: { search_index: selectedIndex, language: "en", use_agentic_retrieval: false } }
                 }, false, undefined);
                 const data = await response.json();
                 const answer =
@@ -911,6 +929,7 @@ const handleDownloadWord = async () => {
                 const response = await chatApi({
                     messages: [{ content: context, role: "user" }],
                     session_state: {},
+                    context: { overrides: { search_index: selectedIndex, language: "en", use_agentic_retrieval: false } }
                 }, false, undefined);
                 const data = await response.json();
                 const answer =
@@ -973,6 +992,7 @@ const handleDownloadWord = async () => {
                 const response = await chatApi({
                     messages: [{ content: context, role: "user" }],
                     session_state: {},
+                    context: { overrides: { search_index: selectedIndex, language: "en", use_agentic_retrieval: false } }
                 }, false, undefined);
                 const data = await response.json();
                 const answer =
@@ -1007,6 +1027,7 @@ const handleDownloadWord = async () => {
                 const response = await chatApi({
                     messages: [{ content: context, role: "user" }],
                     session_state: {},
+                    context: { overrides: { search_index: selectedIndex, language: "en", use_agentic_retrieval: false } }
                 }, false, undefined);
                 const data = await response.json();
                 const answer =
@@ -1078,6 +1099,7 @@ const handleDownloadWord = async () => {
                 const response = await chatApi({
                     messages: [{ content: context, role: "user" }],
                     session_state: {},
+                    context: { overrides: { search_index: selectedIndex, language: "en", use_agentic_retrieval: false } }
                 }, false, undefined);
                 const data = await response.json();
                 const answer =
@@ -1111,6 +1133,7 @@ const handleDownloadWord = async () => {
                 const response = await chatApi({
                     messages: [{ content: context, role: "user" }],
                     session_state: {},
+                    context: { overrides: { search_index: selectedIndex, language: "en", use_agentic_retrieval: false } }
                 }, false, undefined);
                 const data = await response.json();
                 const answer =
@@ -1154,6 +1177,7 @@ const handleDownloadWord = async () => {
             const response = await chatApi({
                 messages: [{ content: context, role: "user" }],
                 session_state: {},
+                context: { overrides: { search_index: selectedIndex, language: "en", use_agentic_retrieval: false } }
             }, false, undefined);
             const data = await response.json();
             const answer =
@@ -1192,21 +1216,35 @@ const handleDownloadWord = async () => {
             </div>
             
             <div className={styles.mainContent}>
-                <div className={styles.uploadSection}>
-                    <input
-                        type="file"
-                        accept=".docx,.doc"
-                        ref={fileInputRef}
-                        style={{ display: "none" }}
-                        onChange={handleFileChange}
-                    />
-                    <button className={styles.uploadBtn} onClick={handleUploadClick}>
-                        📁 Select Word Document
-                    </button>
-                    <p style={{ marginTop: 15, color: "#6c757d" }}>
-                        Upload a .docx or .doc file to extract titles and complete sections with numbered paragraphs
-                    </p>
-                </div>
+                <div className={styles.uploadSection} style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+    {/* Index Dropdown */}
+    <div>
+        <select
+            value={selectedIndex}
+            onChange={e => setSelectedIndex(e.target.value)}
+            className={styles.indexDropdown}
+        >
+            {indexes.map(idx => (
+                <option key={idx} value={idx}>{idx}</option>
+            ))}
+        </select>
+    </div>
+    {/* Upload Button */}
+    <button className={styles.uploadBtn} onClick={handleUploadClick}>
+        📁 Select Word Document
+    </button>
+    <input
+        type="file"
+        accept=".docx,.doc"
+        ref={fileInputRef}
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+    />
+</div>
+{/* Upload instructions below the upload section, full width */}
+<p style={{ marginTop: 15, color: "#6c757d", textAlign: "center" }}>
+    Select an Index & Upload a .docx or .doc file 
+</p>
                 
                 {processing && (
                     <div className={styles.processing}>
